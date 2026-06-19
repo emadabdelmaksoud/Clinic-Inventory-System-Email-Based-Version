@@ -2,10 +2,13 @@ import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { visibleSections } from "@/lib/permissions";
+import { useQuery } from "@tanstack/react-query";
+import { listExpiredBatches, listNearExpiryBatches } from "@/lib/fifo";
+import { db } from "@/lib/db";
 import {
   LayoutDashboard, Box, Warehouse, BarChart3, FileUp,
   Users, QrCode, ClipboardList, HardDrive, Settings, LogOut, Menu, X, ChevronRight,
-  Scale, ClipboardEdit,
+  Scale, ClipboardEdit, BellRing,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -20,6 +23,7 @@ interface NavItem {
 const ALL_NAV: NavItem[] = [
   { label: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
   { label: "Balance", path: "/balance", icon: Scale, key: "reports" },
+  { label: "Expiry Alerts", path: "/expiry", icon: BellRing, key: "reports" },
   { label: "Print Order", path: "/print-order", icon: ClipboardEdit, key: "inventory" },
   { label: "Products", path: "/products", icon: Box, key: "products" },
   { label: "Inventory", path: "/inventory", icon: Warehouse, key: "inventory" },
@@ -40,6 +44,27 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   const sections = visibleSections(user?.role);
   const navItems = ALL_NAV.filter(item => !item.key || sections[item.key as keyof typeof sections]);
+
+  const { data: nearExpiryDays = 90 } = useQuery({
+    queryKey: ["settings", "nearExpiryDays"],
+    queryFn: async () => {
+      const row = await db.settings.get("nearExpiryDays");
+      return Number(row?.value ?? "90");
+    },
+    staleTime: 1000 * 60 * 5,
+  });
+
+  const { data: expiryAlertCount = 0 } = useQuery({
+    queryKey: ["nav_expiry_badge", nearExpiryDays],
+    queryFn: async () => {
+      const [expired, near] = await Promise.all([
+        listExpiredBatches(),
+        listNearExpiryBatches(nearExpiryDays),
+      ]);
+      return expired.length + near.length;
+    },
+    staleTime: 1000 * 60,
+  });
 
   const isActive = (path: string) => {
     if (path === "/dashboard" && (location === "/" || location === "/dashboard")) return true;
@@ -76,8 +101,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               )}
             >
               <Icon className="w-4 h-4 flex-shrink-0" />
-              {item.label}
-              {active && <ChevronRight className="w-3 h-3 ml-auto" />}
+              <span className="flex-1 truncate">{item.label}</span>
+              {item.path === "/expiry" && expiryAlertCount > 0 && !active && (
+                <span className="ml-auto flex-shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-destructive text-white text-[10px] font-bold flex items-center justify-center leading-none">
+                  {expiryAlertCount > 99 ? "99+" : expiryAlertCount}
+                </span>
+              )}
+              {active && <ChevronRight className="w-3 h-3 ml-auto flex-shrink-0" />}
             </Link>
           );
         })}

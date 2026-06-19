@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ================================================================
 #  Clinic Inventory -- Windows Desktop App Builder
-#  Run this in Git Bash on Windows
+#  Run this in Git Bash on Windows (or WSL)
 #  Requirements: Node.js LTS  (https://nodejs.org/)
 # ================================================================
 
@@ -9,6 +9,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_DIR="$SCRIPT_DIR/windows-build"
+APP_DIR="$SCRIPT_DIR/artifacts/store-control"
 
 # ── colours (fall back gracefully if terminal doesn't support them) ──
 if [ -t 1 ]; then
@@ -18,11 +19,11 @@ else
   GREEN=''; YELLOW=''; CYAN=''; RED=''; NC=''
 fi
 
-die() { echo -e "${RED}ERROR: $*${NC}"; echo; read -rp "Press Enter to close..."; exit 1; }
+die() { echo -e "${RED}ERROR: $*${NC}"; echo; read -rp "Press Enter to close..." || true; exit 1; }
 
 echo -e "${CYAN}"
 echo "  =================================================="
-echo "    Clinic Inventory  |  Windows Installer Builder"
+echo "    AUC Clinic Inventory  |  Windows Installer Builder"
 echo "  =================================================="
 echo -e "${NC}"
 
@@ -39,39 +40,48 @@ if ! command -v npm &>/dev/null; then
   die "npm is not installed (it normally ships with Node.js).\n  Re-install Node.js from https://nodejs.org/"
 fi
 
-# ── 2. Ensure app files are present ──────────────────────────────
-echo -e "${YELLOW}[2/4] Checking app files...${NC}"
+# ── 2. Build the React app for Electron ──────────────────────────
+echo -e "${YELLOW}[2/4] Building React app for Electron...${NC}"
 
-if [ -f "$BUILD_DIR/dist/public/index.html" ]; then
-  echo "      Pre-built app files found. Ready to package."
+if [ -f "$APP_DIR/dist/public/index.html" ]; then
+  echo "      Pre-built app files found — skipping rebuild."
+  echo "      (Delete ${APP_DIR}/dist/public/ to force rebuild)"
 else
-  echo "      Pre-built files missing. Attempting to rebuild..."
+  echo "      Building Vite app with Electron config..."
+  cd "$APP_DIR"
 
-  # Need pnpm + workspace for a fresh build
-  if ! command -v pnpm &>/dev/null; then
-    die "App files missing and pnpm is not installed.\n\n  The quickest fix: re-download the project from Replit.\n  The pre-built files should be in windows-build/dist/public/."
+  # Try pnpm first, fall back to npm
+  if command -v pnpm &>/dev/null; then
+    pnpm install --no-frozen-lockfile 2>/dev/null || true
+    pnpm run build:electron
+  else
+    npm install
+    npx vite build --config vite.electron.config.ts
   fi
 
-  echo "      Running Vite build..."
-  cd "$SCRIPT_DIR"
-  pnpm --filter @workspace/store-control run build:electron
-  mkdir -p "$BUILD_DIR/dist"
-  cp -r "$SCRIPT_DIR/artifacts/store-control/dist/public" "$BUILD_DIR/dist/public"
-  echo "      Built successfully."
+  echo -e "      ${GREEN}Build complete.${NC}"
 fi
 echo
 
-# ── 3. Install Electron build tools ──────────────────────────────
-echo -e "${YELLOW}[3/4] Installing Electron build tools...${NC}"
-echo "      (First run downloads ~120 MB — please wait)"
-cd "$BUILD_DIR"
-npm install
-echo -e "      ${GREEN}Done.${NC}"
-echo
+# ── 3. Copy built files into windows-build ────────────────────────
+echo -e "${YELLOW}[3/4] Preparing installer package...${NC}"
+mkdir -p "$BUILD_DIR/dist/public"
 
-# ── 4. Build Windows installer ───────────────────────────────────
-echo -e "${YELLOW}[4/4] Building Windows installer...${NC}"
+if [ -d "$APP_DIR/dist/public" ] && [ -f "$APP_DIR/dist/public/index.html" ]; then
+  cp -r "$APP_DIR/dist/public/." "$BUILD_DIR/dist/public/"
+  echo "      App files copied to windows-build/dist/public/"
+else
+  die "Built app files not found at $APP_DIR/dist/public/\nRun the build step first."
+fi
+
+cd "$BUILD_DIR"
+echo "      Installing Electron build tools (first run ~120 MB)..."
+npm install
+echo -e "      ${GREEN}Tools ready.${NC}"
+
+echo "      Running electron-builder..."
 npx electron-builder --win --config electron-builder.json
+echo -e "      ${GREEN}Packaging complete.${NC}"
 echo
 
 # ── Done ──────────────────────────────────────────────────────────
@@ -80,14 +90,15 @@ echo -e "${CYAN}"
 echo "  =================================================="
 echo -e "  ${GREEN}BUILD COMPLETE!${CYAN}  Your installer is ready:"
 echo
-if [ -f "$OUTPUT_DIR/Clinic Inventory 1.0.0 Setup.exe" ]; then
-  echo "    $OUTPUT_DIR/Clinic Inventory 1.0.0 Setup.exe"
+if ls "$OUTPUT_DIR"/*.exe &>/dev/null 2>&1; then
+  ls "$OUTPUT_DIR"/*.exe | while read -r f; do
+    echo "    → $(basename "$f")"
+  done
 else
-  # list whatever was produced
-  ls "$OUTPUT_DIR"/*.exe 2>/dev/null || true
+  echo "    → $OUTPUT_DIR"
 fi
 echo
-echo "  Run the Setup.exe to install on this PC."
+echo "  Run the Setup .exe to install on any Windows PC."
 echo "  The app will appear in:"
 echo "    - Start Menu  (under AUC Clinic)"
 echo "    - Desktop shortcut"
@@ -95,9 +106,9 @@ echo "    - Settings > Apps > Installed apps"
 echo -e "  =================================================="
 echo -e "${NC}"
 
-# Open output folder in Explorer
-if command -v explorer.exe &>/dev/null; then
+# Open output folder in Explorer (works in Git Bash on Windows)
+if command -v explorer.exe &>/dev/null 2>&1; then
   explorer.exe "$(cygpath -w "$OUTPUT_DIR")" 2>/dev/null || true
 fi
 
-read -rp "Press Enter to close..."
+read -rp "Press Enter to close..." || true
