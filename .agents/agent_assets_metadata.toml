@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "u6SBMmBqYqouN0IyNyk9p"
+uri = "file://SUPABASE-VERCEL-GUIDE.md"
+type = "text"
+title = "Supabase & Vercel Setup Guide"
