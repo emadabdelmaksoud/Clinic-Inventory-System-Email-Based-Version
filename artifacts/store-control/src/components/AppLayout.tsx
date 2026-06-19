@@ -5,6 +5,7 @@ import { visibleSections } from "@/lib/permissions";
 import {
   LayoutDashboard, Box, Warehouse, BarChart3, FileUp,
   Users, QrCode, ClipboardList, HardDrive, Settings, LogOut, Menu, X, ChevronRight,
+  Scale, ClipboardEdit,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -18,6 +19,8 @@ interface NavItem {
 
 const ALL_NAV: NavItem[] = [
   { label: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
+  { label: "Balance", path: "/balance", icon: Scale, key: "reports" },
+  { label: "Print Order", path: "/print-order", icon: ClipboardEdit, key: "inventory" },
   { label: "Products", path: "/products", icon: Box, key: "products" },
   { label: "Inventory", path: "/inventory", icon: Warehouse, key: "inventory" },
   { label: "Warehouses", path: "/warehouses", icon: Warehouse, key: "inventory" },

@@ -57,6 +57,10 @@ export async function getProduct(id: string): Promise<Product | undefined> {
 }
 
 export async function createProduct(input: ProductInput, userId?: string): Promise<Product> {
+  const normalizedName = input.productName.trim().toLowerCase();
+  const existing = await db.products.filter(p => p.productName.trim().toLowerCase() === normalizedName).first();
+  if (existing) throw new Error(`A product named "${existing.productName}" already exists`);
+
   const code = await generateProductCode();
   const product: Product = {
     id: generateId(),
