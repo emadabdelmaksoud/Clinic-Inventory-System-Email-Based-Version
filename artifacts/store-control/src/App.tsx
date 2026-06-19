@@ -22,6 +22,7 @@ import BalancePage from "@/pages/Balance";
 import PrintOrderPage from "@/pages/PrintOrder";
 import ExpiryAlertsPage from "@/pages/ExpiryAlerts";
 import StaffReportPage from "@/pages/StaffReport";
+import PurchaseRequestPage from "@/pages/PurchaseRequest";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 1000 * 30, retry: 1 } },
@@ -56,6 +57,7 @@ function AppRouter() {
         <Route path="/print-order" component={PrintOrderPage} />
         <Route path="/expiry" component={ExpiryAlertsPage} />
         <Route path="/staff-report" component={StaffReportPage} />
+        <Route path="/purchase-request" component={PurchaseRequestPage} />
         <Route path="/products/:id" component={ProductDetailPage} />
         <Route path="/products" component={ProductsPage} />
         <Route path="/inventory" component={InventoryPage} />

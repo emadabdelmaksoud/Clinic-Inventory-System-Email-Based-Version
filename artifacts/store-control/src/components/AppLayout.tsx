@@ -8,7 +8,7 @@ import { db } from "@/lib/db";
 import {
   LayoutDashboard, Box, Warehouse, BarChart3, FileUp,
   Users, QrCode, ClipboardList, HardDrive, Settings, LogOut, Menu, X, ChevronRight,
-  Scale, ClipboardEdit, BellRing,
+  Scale, ClipboardEdit, BellRing, ShoppingCart,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -21,21 +21,22 @@ interface NavItem {
 }
 
 const ALL_NAV: NavItem[] = [
-  { label: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
-  { label: "Balance", path: "/balance", icon: Scale, key: "reports" },
-  { label: "Expiry Alerts", path: "/expiry", icon: BellRing, key: "reports" },
-  { label: "Staff Report", path: "/staff-report", icon: Users, key: "reports" },
-  { label: "Print Order", path: "/print-order", icon: ClipboardEdit, key: "inventory" },
-  { label: "Products", path: "/products", icon: Box, key: "products" },
-  { label: "Inventory", path: "/inventory", icon: Warehouse, key: "inventory" },
-  { label: "Warehouses", path: "/warehouses", icon: Warehouse, key: "inventory" },
-  { label: "Reports", path: "/reports", icon: BarChart3, key: "reports" },
-  { label: "Import / Export", path: "/import-export", icon: FileUp, key: "importExport" },
-  { label: "Barcodes", path: "/barcodes", icon: QrCode, key: "barcodes" },
-  { label: "Users", path: "/users", icon: Users, key: "users" },
-  { label: "Audit Logs", path: "/audit-logs", icon: ClipboardList, key: "auditLogs" },
-  { label: "Backups", path: "/backups", icon: HardDrive, key: "backups" },
-  { label: "Settings", path: "/settings", icon: Settings, key: "settings" },
+  { label: "Dashboard",          path: "/dashboard",        icon: LayoutDashboard },
+  { label: "Balance",            path: "/balance",           icon: Scale,         key: "reports" },
+  { label: "Products",           path: "/products",          icon: Box,           key: "products" },
+  { label: "Inventory",          path: "/inventory",         icon: Warehouse,     key: "inventory" },
+  { label: "Warehouses",         path: "/warehouses",        icon: Warehouse,     key: "inventory" },
+  { label: "Reports",            path: "/reports",           icon: BarChart3,     key: "reports" },
+  { label: "Import / Export",    path: "/import-export",     icon: FileUp,        key: "importExport" },
+  { label: "Barcodes",           path: "/barcodes",          icon: QrCode,        key: "barcodes" },
+  { label: "Users",              path: "/users",             icon: Users,         key: "users" },
+  { label: "Audit Logs",         path: "/audit-logs",        icon: ClipboardList, key: "auditLogs" },
+  { label: "Backups",            path: "/backups",           icon: HardDrive,     key: "backups" },
+  { label: "Staff Report",       path: "/staff-report",      icon: Users,         key: "reports" },
+  { label: "Expiry Alerts",      path: "/expiry",            icon: BellRing,      key: "reports" },
+  { label: "Print Order",        path: "/print-order",       icon: ClipboardEdit, key: "inventory" },
+  { label: "Purchase Request",   path: "/purchase-request",  icon: ShoppingCart,  key: "inventory" },
+  { label: "Settings",           path: "/settings",          icon: Settings,      key: "settings" },
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
