@@ -37,26 +37,66 @@ export async function importBackup(file: File): Promise<{ imported: number }> {
   if (!backup.data) throw new Error("Invalid backup file");
   const d = backup.data;
 
-  // Import users FIRST — products/warehouses/transactions reference users via FK.
-  // The backup strips passwordHash on export, so we restore it as an empty string
-  // (users can still log in if the target already has them; otherwise they need a reset).
+  // Build the set of user IDs that are present in THIS backup.
+  // Any createdBy / performedBy / userId value not in this set gets nullified
+  // before insert — this prevents FK violations in Supabase even when the
+  // backup was exported without password hashes (which makes user rows unimportable).
+  const backupUserIds = new Set<string>(
+    (d.users ?? []).map((u: any) => u.id as string)
+  );
+  const safeUserId = (id: string | null | undefined): string | null =>
+    id && backupUserIds.has(id) ? id : null;
+
+  // 1. Users first — referenced by FK in all other tables.
+  //    passwordHash is stripped on export; restore as "" so the NOT NULL constraint passes.
+  //    Users that are already in the target DB keep their existing password.
   if (d.users?.length) {
-    const usersToImport = d.users.map((u: any) => ({
-      ...u,
-      passwordHash: u.passwordHash ?? "",
-    }));
-    await db.users.bulkPut(usersToImport);
+    await db.users.bulkPut(
+      d.users.map((u: any) => ({ ...u, passwordHash: u.passwordHash ?? "" }))
+    );
   }
 
-  if (d.products?.length) await db.products.bulkPut(d.products);
-  if (d.productUnits?.length) await db.productUnits.bulkPut(d.productUnits);
-  if (d.warehouses?.length) await db.warehouses.bulkPut(d.warehouses);
-  if (d.sections?.length) await db.warehouseSections.bulkPut(d.sections);
-  if (d.batches?.length) await db.inventoryBatches.bulkPut(d.batches);
-  if (d.transactions?.length) await db.inventoryTransactions.bulkPut(d.transactions);
+  // 2. Products — createdBy → users
+  if (d.products?.length) {
+    await db.products.bulkPut(
+      d.products.map((p: any) => ({ ...p, createdBy: safeUserId(p.createdBy) }))
+    );
+  }
 
-  const total = [d.users, d.products, d.productUnits, d.warehouses, d.sections, d.batches, d.transactions]
-    .reduce((s, arr) => s + (arr?.length ?? 0), 0);
+  // 3. Product units — no user FK
+  if (d.productUnits?.length) await db.productUnits.bulkPut(d.productUnits);
+
+  // 4. Warehouses — createdBy → users
+  if (d.warehouses?.length) {
+    await db.warehouses.bulkPut(
+      d.warehouses.map((w: any) => ({ ...w, createdBy: safeUserId(w.createdBy) }))
+    );
+  }
+
+  // 5. Warehouse sections — no user FK
+  if (d.sections?.length) await db.warehouseSections.bulkPut(d.sections);
+
+  // 6. Inventory batches — no user FK
+  if (d.batches?.length) await db.inventoryBatches.bulkPut(d.batches);
+
+  // 7. Transactions — performedBy → users
+  if (d.transactions?.length) {
+    await db.inventoryTransactions.bulkPut(
+      d.transactions.map((t: any) => ({ ...t, performedBy: safeUserId(t.performedBy) }))
+    );
+  }
+
+  // 8. Audit logs — userId → users
+  if (d.auditLogs?.length) {
+    await db.auditLogs.bulkPut(
+      d.auditLogs.map((a: any) => ({ ...a, userId: safeUserId(a.userId) }))
+    );
+  }
+
+  const total = [
+    d.users, d.products, d.productUnits, d.warehouses,
+    d.sections, d.batches, d.transactions, d.auditLogs,
+  ].reduce((s, arr) => s + (arr?.length ?? 0), 0);
 
   return { imported: total };
 }
