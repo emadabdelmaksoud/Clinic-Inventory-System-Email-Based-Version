@@ -9,6 +9,14 @@ const port = rawPort ? Number(rawPort) : 3000;
 const basePath = process.env.BASE_PATH || "/";
 const isReplit = process.env.REPL_ID !== undefined;
 
+// On Vercel, VERCEL=1 is set automatically.
+// Output to repo root /dist so vercel.json "outputDirectory": "dist" finds it.
+// On Replit, output to the local dist/public as before.
+const isVercel = process.env.VERCEL === "1";
+const outDir = isVercel
+  ? path.resolve(import.meta.dirname, "../../dist")
+  : path.resolve(import.meta.dirname, "dist/public");
+
 export default defineConfig(async () => ({
   base: basePath,
   plugins: [
@@ -92,7 +100,7 @@ export default defineConfig(async () => ({
   },
   root: path.resolve(import.meta.dirname),
   build: {
-    outDir: path.resolve(import.meta.dirname, "dist/public"),
+    outDir,
     emptyOutDir: true,
   },
   server: {

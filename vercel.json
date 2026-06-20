@@ -1,8 +1,7 @@
 {
   "buildCommand": "pnpm --filter @workspace/store-control run build",
-  "outputDirectory": "artifacts/store-control/dist/public",
+  "outputDirectory": "dist",
   "installCommand": "pnpm install",
-  "framework": null,
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
   ],
