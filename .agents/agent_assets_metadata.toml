@@ -6,3 +6,9 @@ id = "u6SBMmBqYqouN0IyNyk9p"
 uri = "file://SUPABASE-VERCEL-GUIDE.md"
 type = "text"
 title = "Supabase & Vercel Setup Guide"
+
+[[outputs]]
+id = "XawQuMoYt8IPBUuNFgoy5"
+uri = "file://VERCEL-DEPLOY-GUIDE.md"
+type = "text"
+title = "Vercel Deploy Guide (Full)"

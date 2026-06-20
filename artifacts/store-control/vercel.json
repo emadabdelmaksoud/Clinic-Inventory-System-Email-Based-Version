@@ -1,8 +1,7 @@
 {
-  "buildCommand": "pnpm --filter @workspace/store-control run build",
-  "outputDirectory": "artifacts/store-control/dist/public",
-  "installCommand": "pnpm install",
-  "framework": null,
+  "buildCommand": "cd ../.. && pnpm build:vercel",
+  "outputDirectory": "artifacts/store-control/dist",
+  "installCommand": "cd ../.. && pnpm install",
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
   ],
