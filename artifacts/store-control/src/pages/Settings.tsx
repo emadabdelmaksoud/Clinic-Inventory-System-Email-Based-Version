@@ -4,6 +4,9 @@ import { db } from "@/lib/db";
 import { exportBackup, migrateLocalToSupabase } from "@/lib/backup";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { usePWAInstall } from "@/hooks/use-pwa-install";
+import { deduplicateProducts } from "@/lib/products";
+import { deduplicateWarehouses } from "@/lib/warehouses";
+import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,7 +15,7 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Settings, Moon, Sun, Download, Smartphone, CheckCircle2,
-  Cloud, HardDrive, Clock,
+  Cloud, HardDrive, Clock, Trash2, Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -40,12 +43,17 @@ function formatLastRun(iso: string | null): string {
 
 export default function SettingsPage() {
   const qc = useQueryClient();
+  const { user } = useAuth();
   const { canInstall, isInstalled, promptInstall } = usePWAInstall();
 
   const [darkMode, setDarkMode] = useState(document.documentElement.classList.contains("dark"));
   const [orgName, setOrgName] = useState("");
   const [nearExpiryDays, setNearExpiryDays] = useState("90");
   const [saving, setSaving] = useState(false);
+
+  // Deduplication state
+  const [dedupingProducts, setDedupingProducts] = useState(false);
+  const [dedupingWarehouses, setDedupingWarehouses] = useState(false);
 
   // Auto backup state
   const [offlineInterval, setOfflineInterval] = useState<string>("off");
@@ -130,6 +138,34 @@ export default function SettingsPage() {
       toast.error((e as Error).message);
     }
     setRunningSupabase(false);
+  }
+
+  async function runDeduplicateProducts() {
+    if (!confirm("This will remove duplicate products (same name, case-insensitive) and merge their inventory to the oldest record. Continue?")) return;
+    setDedupingProducts(true);
+    try {
+      const { removed, merged } = await deduplicateProducts(user?.id);
+      if (removed === 0) toast.success("No duplicate products found");
+      else {
+        toast.success(`Removed ${removed} duplicate product${removed !== 1 ? "s" : ""}, merged ${merged} record${merged !== 1 ? "s" : ""}`);
+        qc.invalidateQueries({ queryKey: ["products"] });
+      }
+    } catch (e) { toast.error((e as Error).message); }
+    setDedupingProducts(false);
+  }
+
+  async function runDeduplicateWarehouses() {
+    if (!confirm("This will remove duplicate warehouses (same name, case-insensitive) and merge their sections and inventory to the oldest record. Continue?")) return;
+    setDedupingWarehouses(true);
+    try {
+      const { removed, merged } = await deduplicateWarehouses(user?.id);
+      if (removed === 0) toast.success("No duplicate warehouses found");
+      else {
+        toast.success(`Removed ${removed} duplicate warehouse${removed !== 1 ? "s" : ""}, merged ${merged} record${merged !== 1 ? "s" : ""}`);
+        qc.invalidateQueries({ queryKey: ["warehouses"] });
+      }
+    } catch (e) { toast.error((e as Error).message); }
+    setDedupingWarehouses(false);
   }
 
   async function handleSave() {
@@ -331,6 +367,64 @@ export default function SettingsPage() {
             >
               <Cloud className="w-3.5 h-3.5 mr-1.5" />
               {runningSupabase ? "Syncing…" : "Sync Now"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Data Quality */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Trash2 className="w-4 h-4" /> Data Quality
+          </CardTitle>
+          <CardDescription>
+            Find and remove duplicate products or warehouses (case-insensitive name match).
+            Inventory data is safely merged into the oldest record before duplicates are deleted.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium">Duplicate Products</p>
+              <p className="text-xs text-muted-foreground">
+                Merges batches & transactions, keeps the oldest product.
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={runDeduplicateProducts}
+              disabled={dedupingProducts}
+              className="flex-shrink-0"
+            >
+              {dedupingProducts ? (
+                <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Running…</>
+              ) : (
+                "Remove Duplicates"
+              )}
+            </Button>
+          </div>
+          <div className="border-t" />
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium">Duplicate Warehouses</p>
+              <p className="text-xs text-muted-foreground">
+                Merges sections & batches, keeps the oldest warehouse.
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={runDeduplicateWarehouses}
+              disabled={dedupingWarehouses}
+              className="flex-shrink-0"
+            >
+              {dedupingWarehouses ? (
+                <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Running…</>
+              ) : (
+                "Remove Duplicates"
+              )}
             </Button>
           </div>
         </CardContent>

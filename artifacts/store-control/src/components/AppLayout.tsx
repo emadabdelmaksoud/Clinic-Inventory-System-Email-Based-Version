@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import PWAInstallButton from "@/components/PWAInstallButton";
 
 interface NavItem {
   label: string;
@@ -114,6 +115,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           );
         })}
       </nav>
+
+      <PWAInstallButton />
 
       <div className="px-2 py-3 border-t border-sidebar-border">
         <div className="flex items-center gap-3 px-3 py-2 mb-1">
