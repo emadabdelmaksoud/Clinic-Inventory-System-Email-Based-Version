@@ -1,4 +1,5 @@
-import { db, generateId, now } from "./db";
+import { db, generateId, now, StoreControlDB } from "./db";
+import { isSupabaseConfigured, getSupabaseClient } from "./supabase";
 import * as XLSX from "xlsx";
 import type { TxnRow, StockSummaryRow } from "./reports";
 import { upsertBatch, recordTransaction } from "./inventory";
@@ -36,6 +37,17 @@ export async function importBackup(file: File): Promise<{ imported: number }> {
   if (!backup.data) throw new Error("Invalid backup file");
   const d = backup.data;
 
+  // Import users FIRST — products/warehouses/transactions reference users via FK.
+  // The backup strips passwordHash on export, so we restore it as an empty string
+  // (users can still log in if the target already has them; otherwise they need a reset).
+  if (d.users?.length) {
+    const usersToImport = d.users.map((u: any) => ({
+      ...u,
+      passwordHash: u.passwordHash ?? "",
+    }));
+    await db.users.bulkPut(usersToImport);
+  }
+
   if (d.products?.length) await db.products.bulkPut(d.products);
   if (d.productUnits?.length) await db.productUnits.bulkPut(d.productUnits);
   if (d.warehouses?.length) await db.warehouses.bulkPut(d.warehouses);
@@ -43,10 +55,117 @@ export async function importBackup(file: File): Promise<{ imported: number }> {
   if (d.batches?.length) await db.inventoryBatches.bulkPut(d.batches);
   if (d.transactions?.length) await db.inventoryTransactions.bulkPut(d.transactions);
 
-  const total = [d.products, d.productUnits, d.warehouses, d.sections, d.batches, d.transactions]
+  const total = [d.users, d.products, d.productUnits, d.warehouses, d.sections, d.batches, d.transactions]
     .reduce((s, arr) => s + (arr?.length ?? 0), 0);
 
   return { imported: total };
+}
+
+export interface MigrationProgress {
+  step: string;
+  stepIndex: number;
+  totalSteps: number;
+  recordCount: number;
+}
+
+export interface MigrationSummary {
+  users: number;
+  products: number;
+  productUnits: number;
+  warehouses: number;
+  warehouseSections: number;
+  inventoryBatches: number;
+  inventoryTransactions: number;
+  auditLogs: number;
+  settings: number;
+  total: number;
+}
+
+/** Read all counts from the local IndexedDB regardless of Supabase config. */
+export async function getLocalDataSummary(): Promise<MigrationSummary> {
+  const localDb = new StoreControlDB();
+  const [users, products, productUnits, warehouses, sections, batches, transactions, auditLogs, settings] =
+    await Promise.all([
+      localDb.users.count(),
+      localDb.products.count(),
+      localDb.productUnits.count(),
+      localDb.warehouses.count(),
+      localDb.warehouseSections.count(),
+      localDb.inventoryBatches.count(),
+      localDb.inventoryTransactions.count(),
+      localDb.auditLogs.count(),
+      localDb.settings.count(),
+    ]);
+  const total = users + products + productUnits + warehouses + sections + batches + transactions + auditLogs + settings;
+  return { users, products, productUnits, warehouses, warehouseSections: sections, inventoryBatches: batches, inventoryTransactions: transactions, auditLogs, settings, total };
+}
+
+const CHUNK_SIZE = 200;
+
+async function upsertChunked(client: ReturnType<typeof getSupabaseClient>, table: string, rows: any[]): Promise<void> {
+  if (rows.length === 0) return;
+  for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
+    const chunk = rows.slice(i, i + CHUNK_SIZE);
+    const { error } = await client.from(table).upsert(chunk);
+    if (error) throw new Error(`Failed to sync ${table}: ${error.message}`);
+  }
+}
+
+/**
+ * Reads all data from local IndexedDB and pushes it to Supabase via upsert.
+ * Works regardless of whether the app is currently in Supabase or local mode.
+ * onProgress is called before and after each step.
+ */
+export async function migrateLocalToSupabase(
+  onProgress: (p: MigrationProgress) => void
+): Promise<{ migrated: number }> {
+  if (!isSupabaseConfigured) {
+    throw new Error("Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY first.");
+  }
+
+  // Always open a fresh Dexie instance to read local data, even if app is in Supabase mode.
+  const localDb = new StoreControlDB();
+  const client = getSupabaseClient();
+
+  // Read everything from local DB in parallel
+  const [users, products, productUnits, warehouses, sections, batches, transactions, auditLogs, settings] =
+    await Promise.all([
+      localDb.users.toArray(),
+      localDb.products.toArray(),
+      localDb.productUnits.toArray(),
+      localDb.warehouses.toArray(),
+      localDb.warehouseSections.toArray(),
+      localDb.inventoryBatches.toArray(),
+      localDb.inventoryTransactions.toArray(),
+      localDb.auditLogs.toArray(),
+      localDb.settings.toArray(),
+    ]);
+
+  // Dependency order matters: users → products/warehouses → units/sections → batches → transactions → audit
+  const steps: Array<{ name: string; table: string; rows: any[] }> = [
+    { name: "Users",                 table: "users",                   rows: users },
+    { name: "Products",              table: "products",                rows: products },
+    { name: "Product Units",         table: "product_units",           rows: productUnits },
+    { name: "Warehouses",            table: "warehouses",              rows: warehouses },
+    { name: "Warehouse Sections",    table: "warehouse_sections",      rows: sections },
+    { name: "Inventory Batches",     table: "inventory_batches",       rows: batches },
+    { name: "Transactions",          table: "inventory_transactions",  rows: transactions },
+    { name: "Audit Logs",            table: "audit_logs",              rows: auditLogs },
+    { name: "Settings",              table: "settings",                rows: settings },
+  ];
+
+  let migrated = 0;
+  const totalSteps = steps.length;
+
+  for (let i = 0; i < steps.length; i++) {
+    const { name, table, rows } = steps[i];
+    onProgress({ step: name, stepIndex: i, totalSteps, recordCount: rows.length });
+    await upsertChunked(client, table, rows);
+    migrated += rows.length;
+    onProgress({ step: name, stepIndex: i + 1, totalSteps, recordCount: rows.length });
+  }
+
+  return { migrated };
 }
 
 export async function exportProductsExcel(): Promise<void> {

@@ -1,13 +1,33 @@
-import { useState } from "react";
-import { exportBackup, importBackup } from "@/lib/backup";
+import { useState, useEffect } from "react";
+import { exportBackup, importBackup, migrateLocalToSupabase, getLocalDataSummary, type MigrationProgress, type MigrationSummary } from "@/lib/backup";
+import { isSupabaseConfigured } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { HardDrive, Download, Upload, AlertTriangle } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
+import { HardDrive, Download, Upload, AlertTriangle, Cloud, CheckCircle2, Loader2, Database } from "lucide-react";
 import { toast } from "sonner";
 
 export default function BackupsPage() {
   const [importing, setImporting] = useState(false);
   const [exporting, setExporting] = useState(false);
+
+  // Migration state
+  const [localSummary, setLocalSummary] = useState<MigrationSummary | null>(null);
+  const [loadingSummary, setLoadingSummary] = useState(false);
+  const [migrating, setMigrating] = useState(false);
+  const [migrationProgress, setMigrationProgress] = useState<MigrationProgress | null>(null);
+  const [migrationDone, setMigrationDone] = useState(false);
+  const [migratedCount, setMigratedCount] = useState(0);
+
+  useEffect(() => {
+    if (isSupabaseConfigured) {
+      setLoadingSummary(true);
+      getLocalDataSummary()
+        .then(setLocalSummary)
+        .catch(() => setLocalSummary(null))
+        .finally(() => setLoadingSummary(false));
+    }
+  }, []);
 
   async function handleExport() {
     setExporting(true);
@@ -31,17 +51,54 @@ export default function BackupsPage() {
     e.target.value = "";
   }
 
+  async function handleMigrate() {
+    if (!confirm(
+      "This will copy all local IndexedDB data to your Supabase cloud database.\n\n" +
+      "Existing records in Supabase with the same IDs will be overwritten.\n\nContinue?"
+    )) return;
+
+    setMigrating(true);
+    setMigrationDone(false);
+    setMigrationProgress(null);
+
+    try {
+      const { migrated } = await migrateLocalToSupabase((progress) => {
+        setMigrationProgress({ ...progress });
+      });
+      setMigratedCount(migrated);
+      setMigrationDone(true);
+      toast.success(`Successfully synced ${migrated} records to Supabase`);
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setMigrating(false);
+    }
+  }
+
+  const progressPct = migrationProgress
+    ? Math.round((migrationProgress.stepIndex / migrationProgress.totalSteps) * 100)
+    : 0;
+
   return (
     <div className="space-y-6 max-w-2xl">
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2"><HardDrive className="w-6 h-6" /> Backups</h1>
-        <p className="text-sm text-muted-foreground">Export and restore your local database</p>
+        <p className="text-sm text-muted-foreground">Export, restore, and sync your database</p>
       </div>
 
-      <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
-        <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-        <p>All data is stored locally in your browser. Export backups regularly to prevent data loss if you clear browser storage.</p>
-      </div>
+      {!isSupabaseConfigured && (
+        <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+          <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+          <p>All data is stored locally in your browser. Export backups regularly to prevent data loss if you clear browser storage.</p>
+        </div>
+      )}
+
+      {isSupabaseConfigured && (
+        <div className="flex items-start gap-2 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-emerald-800">
+          <Cloud className="w-4 h-4 mt-0.5 flex-shrink-0" />
+          <p>Supabase is connected. Data is saved to the cloud. Use the migration tool below to copy any existing local data up to Supabase.</p>
+        </div>
+      )}
 
       <div className="grid sm:grid-cols-2 gap-4">
         <Card>
@@ -50,7 +107,7 @@ export default function BackupsPage() {
             <CardDescription>Download all your data as a JSON file.</CardDescription>
           </CardHeader>
           <CardContent>
-            <Button onClick={handleExport} disabled={exporting} className="w-full" data-testid="button-export-backup">
+            <Button onClick={handleExport} disabled={exporting} className="w-full">
               {exporting ? "Exporting..." : "Download Backup"}
             </Button>
           </CardContent>
@@ -63,8 +120,8 @@ export default function BackupsPage() {
           </CardHeader>
           <CardContent>
             <label className="block w-full">
-              <input type="file" accept=".json" onChange={handleImport} className="hidden" data-testid="input-import-file" />
-              <Button asChild disabled={importing} variant="outline" className="w-full cursor-pointer" data-testid="button-import-backup">
+              <input type="file" accept=".json" onChange={handleImport} className="hidden" />
+              <Button asChild disabled={importing} variant="outline" className="w-full cursor-pointer">
                 <span>{importing ? "Importing..." : "Select Backup File"}</span>
               </Button>
             </label>
@@ -72,20 +129,117 @@ export default function BackupsPage() {
         </Card>
       </div>
 
+      {/* Migrate to Supabase — only shown when Supabase is configured */}
+      {isSupabaseConfigured && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Cloud className="w-4 h-4" /> Migrate Local Data to Supabase
+            </CardTitle>
+            <CardDescription>
+              One-click sync — copies everything from your browser's local IndexedDB storage up to your connected Supabase database. Safe to run multiple times (uses upsert).
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+
+            {/* Local data summary */}
+            {loadingSummary && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Scanning local storage…
+              </div>
+            )}
+
+            {localSummary && !loadingSummary && (
+              <div className="rounded-md border bg-muted/30 p-3 space-y-1.5">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Local records found</p>
+                <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
+                  {[
+                    ["Users",          localSummary.users],
+                    ["Products",       localSummary.products],
+                    ["Product Units",  localSummary.productUnits],
+                    ["Warehouses",     localSummary.warehouses],
+                    ["WH Sections",    localSummary.warehouseSections],
+                    ["Batches",        localSummary.inventoryBatches],
+                    ["Transactions",   localSummary.inventoryTransactions],
+                    ["Audit Logs",     localSummary.auditLogs],
+                  ].map(([label, count]) => (
+                    <div key={label as string} className="flex justify-between">
+                      <span className="text-muted-foreground">{label}</span>
+                      <span className="font-medium tabular-nums">{count as number}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex justify-between pt-1 border-t text-sm font-semibold">
+                  <span>Total</span>
+                  <span className="tabular-nums">{localSummary.total}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Progress bar during migration */}
+            {migrating && migrationProgress && (
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground flex items-center gap-1.5">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Syncing <span className="font-medium text-foreground">{migrationProgress.step}</span>
+                    {migrationProgress.recordCount > 0 && (
+                      <span className="text-muted-foreground">({migrationProgress.recordCount} records)</span>
+                    )}
+                  </span>
+                  <span className="text-muted-foreground tabular-nums">{progressPct}%</span>
+                </div>
+                <Progress value={progressPct} className="h-2" />
+                <p className="text-xs text-muted-foreground">
+                  Step {migrationProgress.stepIndex} of {migrationProgress.totalSteps}
+                </p>
+              </div>
+            )}
+
+            {/* Success state */}
+            {migrationDone && !migrating && (
+              <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-emerald-800">
+                <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                <span>Migration complete — <strong>{migratedCount}</strong> records synced to Supabase.</span>
+              </div>
+            )}
+
+            <Button
+              onClick={handleMigrate}
+              disabled={migrating || (localSummary?.total === 0)}
+              className="w-full"
+              variant={migrationDone ? "outline" : "default"}
+            >
+              {migrating ? (
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Migrating…</>
+              ) : migrationDone ? (
+                <><CheckCircle2 className="w-4 h-4 mr-2" /> Run Again</>
+              ) : (
+                <><Database className="w-4 h-4 mr-2" /> Migrate Local Data to Supabase</>
+              )}
+            </Button>
+
+            {localSummary?.total === 0 && !loadingSummary && (
+              <p className="text-xs text-muted-foreground text-center">No local data found — nothing to migrate.</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader className="pb-3"><CardTitle className="text-sm">Storage Information</CardTitle></CardHeader>
         <CardContent className="space-y-2 text-sm">
           <div className="flex justify-between">
             <span className="text-muted-foreground">Storage type</span>
-            <span>IndexedDB (Browser)</span>
+            <span>{isSupabaseConfigured ? "Supabase (Cloud)" : "IndexedDB (Browser)"}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-muted-foreground">Sync</span>
-            <span>Offline only — no cloud sync</span>
+            <span>{isSupabaseConfigured ? "Cloud — accessible from any device" : "Offline only — no cloud sync"}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-muted-foreground">Persistence</span>
-            <span>Survives page reload, cleared on browser data wipe</span>
+            <span>{isSupabaseConfigured ? "Permanent (Supabase)" : "Survives reload, cleared on browser data wipe"}</span>
           </div>
         </CardContent>
       </Card>
