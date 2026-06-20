@@ -37,29 +37,77 @@ export async function importBackup(file: File): Promise<{ imported: number }> {
   if (!backup.data) throw new Error("Invalid backup file");
   const d = backup.data;
 
-  // Build the set of user IDs that are present in THIS backup.
-  // Any createdBy / performedBy / userId value not in this set gets nullified
-  // before insert — this prevents FK violations in Supabase even when the
-  // backup was exported without password hashes (which makes user rows unimportable).
-  const backupUserIds = new Set<string>(
-    (d.users ?? []).map((u: any) => u.id as string)
-  );
-  const safeUserId = (id: string | null | undefined): string | null =>
-    id && backupUserIds.has(id) ? id : null;
+  // ------------------------------------------------------------------
+  // Step 1: Build a user-ID mapping (backupLocalId → targetDbId).
+  //
+  // Problem: The same username (e.g. "admin") can exist in BOTH the
+  // backup (with a local UUID) AND in the target Supabase DB (with a
+  // different UUID assigned on first setup). Inserting both rows
+  // violates the UNIQUE constraint on "username".
+  //
+  // Solution:
+  //  - In Supabase mode: query existing users by username, skip inserting
+  //    users that already exist, and remap their IDs so FK columns point
+  //    to the Supabase UUID instead of the backup's local UUID.
+  //  - In local Dexie mode: no constraints, insert everything as-is.
+  // ------------------------------------------------------------------
+  const userIdMap = new Map<string, string>(); // backupId → targetId
 
-  // 1. Users first — referenced by FK in all other tables.
-  //    passwordHash is stripped on export; restore as "" so the NOT NULL constraint passes.
-  //    Users that are already in the target DB keep their existing password.
   if (d.users?.length) {
-    await db.users.bulkPut(
-      d.users.map((u: any) => ({ ...u, passwordHash: u.passwordHash ?? "" }))
-    );
+    const backupUsers: any[] = d.users.map((u: any) => ({
+      ...u,
+      passwordHash: u.passwordHash ?? "", // stripped on export; "" satisfies NOT NULL
+    }));
+
+    if (isSupabaseConfigured) {
+      const client = getSupabaseClient();
+
+      // Fetch all existing usernames and their IDs from Supabase
+      const { data: existing, error: fetchErr } = await client
+        .from("users")
+        .select("id, username");
+      if (fetchErr) throw new Error(`Failed to read existing users: ${fetchErr.message}`);
+
+      const existingByUsername = new Map<string, string>(
+        (existing ?? []).map((u: any) => [u.username as string, u.id as string])
+      );
+
+      const usersToInsert: any[] = [];
+
+      for (const bu of backupUsers) {
+        const existingId = existingByUsername.get(bu.username);
+        if (existingId) {
+          // Already in Supabase — map the backup's local ID → Supabase's ID.
+          // Do NOT re-insert; that would violate the unique username constraint.
+          userIdMap.set(bu.id, existingId);
+        } else {
+          // New user — insert with its backup ID.
+          userIdMap.set(bu.id, bu.id);
+          usersToInsert.push(bu);
+        }
+      }
+
+      if (usersToInsert.length > 0) {
+        await db.users.bulkPut(usersToInsert);
+      }
+    } else {
+      // Local Dexie — no FK constraints, insert all, IDs stay the same.
+      await db.users.bulkPut(backupUsers);
+      for (const bu of backupUsers) userIdMap.set(bu.id, bu.id);
+    }
   }
+
+  // Helper: translate a user-reference field through the ID map.
+  // Returns null if the ID is absent (broken reference → safe FK null).
+  const resolveUserId = (id: string | null | undefined): string | null => {
+    if (!id) return null;
+    return userIdMap.get(id) ?? null;
+  };
 
   // 2. Products — createdBy → users
   if (d.products?.length) {
     await db.products.bulkPut(
-      d.products.map((p: any) => ({ ...p, createdBy: safeUserId(p.createdBy) }))
+      d.products.map((p: any) => ({ ...p, createdBy: resolveUserId(p.createdBy) }))
     );
   }
 
@@ -69,7 +117,7 @@ export async function importBackup(file: File): Promise<{ imported: number }> {
   // 4. Warehouses — createdBy → users
   if (d.warehouses?.length) {
     await db.warehouses.bulkPut(
-      d.warehouses.map((w: any) => ({ ...w, createdBy: safeUserId(w.createdBy) }))
+      d.warehouses.map((w: any) => ({ ...w, createdBy: resolveUserId(w.createdBy) }))
     );
   }
 
@@ -82,14 +130,14 @@ export async function importBackup(file: File): Promise<{ imported: number }> {
   // 7. Transactions — performedBy → users
   if (d.transactions?.length) {
     await db.inventoryTransactions.bulkPut(
-      d.transactions.map((t: any) => ({ ...t, performedBy: safeUserId(t.performedBy) }))
+      d.transactions.map((t: any) => ({ ...t, performedBy: resolveUserId(t.performedBy) }))
     );
   }
 
   // 8. Audit logs — userId → users
   if (d.auditLogs?.length) {
     await db.auditLogs.bulkPut(
-      d.auditLogs.map((a: any) => ({ ...a, userId: safeUserId(a.userId) }))
+      d.auditLogs.map((a: any) => ({ ...a, userId: resolveUserId(a.userId) }))
     );
   }
 
