@@ -100,6 +100,15 @@ export async function listTransactionsFull(filters: ReportFilters = {}, limit = 
   return rows;
 }
 
+export interface BatchDetail {
+  batchId: string;
+  batchNumber: string | null;
+  expiryDate: string | null;
+  quantityBaseUnit: number;
+  warehouseId: string;
+  warehouseName: string;
+}
+
 export interface StockSummaryRow {
   productId: string;
   productName: string;
@@ -111,13 +120,17 @@ export interface StockSummaryRow {
   batchCount: number;
   nearExpiry: number;
   expired: number;
+  batches: BatchDetail[];
 }
 
 export async function getStockSummary(): Promise<StockSummaryRow[]> {
-  const [products, batches] = await Promise.all([
+  const [products, batches, warehouses] = await Promise.all([
     db.products.toArray(),
     db.inventoryBatches.toArray(),
+    db.warehouses.toArray(),
   ]);
+
+  const warehouseMap = new Map(warehouses.map(w => [w.id, w]));
   const today = new Date().toISOString().slice(0, 10);
   const nearLimit = new Date();
   nearLimit.setDate(nearLimit.getDate() + 90);
@@ -125,6 +138,14 @@ export async function getStockSummary(): Promise<StockSummaryRow[]> {
 
   return products.map(p => {
     const pBatches = batches.filter(b => b.productId === p.id && b.quantityBaseUnit > 0);
+    const batchDetails: BatchDetail[] = pBatches.map(b => ({
+      batchId: b.id,
+      batchNumber: b.batchNumber,
+      expiryDate: b.expiryDate,
+      quantityBaseUnit: b.quantityBaseUnit,
+      warehouseId: b.warehouseId,
+      warehouseName: warehouseMap.get(b.warehouseId)?.warehouseName ?? "Unknown",
+    }));
     const onHandBase = pBatches.reduce((s, b) => s + b.quantityBaseUnit, 0);
     const nearExpiry = pBatches.filter(b => b.expiryDate && b.expiryDate >= today && b.expiryDate <= nearLimitStr).length;
     const expired = pBatches.filter(b => b.expiryDate && b.expiryDate < today).length;
@@ -139,6 +160,7 @@ export async function getStockSummary(): Promise<StockSummaryRow[]> {
       batchCount: pBatches.length,
       nearExpiry,
       expired,
+      batches: batchDetails,
     };
   });
 }

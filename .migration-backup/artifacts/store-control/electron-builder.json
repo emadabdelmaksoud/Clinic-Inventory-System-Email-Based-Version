@@ -1,40 +1,42 @@
 {
-  "appId": "com.storecontrol.app",
-  "productName": "Store Control",
-  "copyright": "Store Control",
+  "appId": "com.auc.clinic-inventory",
+  "productName": "AUC Clinic Inventory",
+  "copyright": "AUC Clinic",
   "directories": {
-    "output": "dist/electron",
+    "output": "dist/installer",
     "buildResources": "public"
   },
+  "extraMetadata": {
+    "main": "electron/main.cjs"
+  },
   "files": [
-    "dist/public/**/*",
-    "electron/**/*",
+    "dist/electron/**",
+    "electron/main.cjs",
     "package.json"
   ],
   "win": {
     "target": [
-      { "target": "nsis", "arch": ["x64"] },
-      { "target": "portable", "arch": ["x64"] }
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      },
+      {
+        "target": "portable",
+        "arch": ["x64"]
+      }
     ],
-    "icon": "public/icon.ico",
-    "requestedExecutionLevel": "asInvoker"
+    "icon": "public/icon.png"
   },
   "nsis": {
     "oneClick": false,
     "allowToChangeInstallationDirectory": true,
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true,
-    "shortcutName": "Store Control",
-    "deleteAppDataOnUninstall": false
+    "shortcutName": "AUC Clinic Inventory",
+    "installerIcon": "public/icon.png",
+    "uninstallerIcon": "public/icon.png"
   },
-  "mac": {
-    "target": ["dmg"],
-    "icon": "public/icon.png",
-    "category": "public.app-category.business"
-  },
-  "linux": {
-    "target": ["AppImage", "deb"],
-    "icon": "public/icon.png",
-    "category": "Office"
+  "portable": {
+    "artifactName": "AUC-Clinic-Inventory-Portable.exe"
   }
 }

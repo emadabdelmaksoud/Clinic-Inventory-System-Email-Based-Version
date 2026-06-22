@@ -14,31 +14,40 @@ interface ComboboxInputProps {
 
 export function ComboboxInput({ value, onChange, options, placeholder, className }: ComboboxInputProps) {
   const [open, setOpen] = useState(false);
+  const [focused, setFocused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const isSelectingRef = useRef(false);
 
   const query = value?.trim().toLowerCase() ?? "";
   const filtered = query
     ? options.filter((o) => o.toLowerCase().includes(query))
     : options;
 
+  const isOpen = (focused || isSelectingRef.current) && filtered.length > 0;
+
   function select(option: string) {
+    isSelectingRef.current = false;
     onChange(option);
     setOpen(false);
+    setFocused(false);
     inputRef.current?.blur();
   }
 
   return (
-    <Popover open={open && filtered.length > 0} onOpenChange={setOpen}>
+    <Popover open={isOpen} onOpenChange={() => {}}>
       <PopoverAnchor asChild>
         <Input
           ref={inputRef}
           value={value ?? ""}
           onChange={(e) => {
             onChange(e.target.value);
-            setOpen(true);
           }}
-          onFocus={() => setOpen(true)}
-          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          onFocus={() => setFocused(true)}
+          onBlur={() => {
+            if (!isSelectingRef.current) {
+              setFocused(false);
+            }
+          }}
           placeholder={placeholder}
           className={className}
           autoComplete="off"
@@ -48,6 +57,13 @@ export function ComboboxInput({ value, onChange, options, placeholder, className
         className="p-0"
         style={{ width: "var(--radix-popper-anchor-width)" }}
         onOpenAutoFocus={(e) => e.preventDefault()}
+        onMouseDown={(e) => {
+          e.preventDefault();
+          isSelectingRef.current = true;
+        }}
+        onMouseUp={() => {
+          isSelectingRef.current = false;
+        }}
         align="start"
         side="bottom"
         sideOffset={4}

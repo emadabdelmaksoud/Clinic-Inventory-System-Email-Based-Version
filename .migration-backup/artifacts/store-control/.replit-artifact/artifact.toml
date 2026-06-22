@@ -1,6 +1,6 @@
 kind = "web"
 previewPath = "/"
-title = "Store Control"
+title = "AUC Clinic Inventory"
 version = "1.0.0"
 id = "artifacts/store-control"
 router = "path"

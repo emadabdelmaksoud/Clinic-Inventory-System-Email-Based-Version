@@ -3,10 +3,6 @@
 # compiled output
 dist
 tmp
-
-# Allow pre-built Electron assets to be committed
-!windows-build/dist/
-!windows-build/dist/**
 out-tsc
 *.tsbuildinfo
 .expo
