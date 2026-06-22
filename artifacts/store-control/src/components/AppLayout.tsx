@@ -279,6 +279,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </div>
       </nav>
 
+      <div className="border-t border-sidebar-border/40 mx-2" />
+
       <PWAInstallButton />
 
       {/* User footer */}
