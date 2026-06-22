@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getOverviewKpis } from "@/lib/reports";
 import { listExpiredBatches, listNearExpiryBatches, listLowStockProducts } from "@/lib/fifo";
@@ -62,23 +63,25 @@ export default function DashboardPage() {
   const { data: nearBatches = [] } = useQuery({ queryKey: ["alerts_near", 90], queryFn: () => listNearExpiryBatches(90) });
   const { data: lowStock = [] } = useQuery({ queryKey: ["alerts_low"], queryFn: listLowStockProducts });
 
-  const { data: productMap } = useQuery({
+  const { data: productsArr } = useQuery({
     queryKey: ["products"],
-    queryFn: async () => {
-      const products = await db.products.toArray();
-      return new Map(products.map(p => [p.id, p]));
-    },
+    queryFn: () => db.products.toArray(),
     staleTime: 1000 * 60,
   });
+  const productMap = useMemo(
+    () => new Map((productsArr ?? []).map(p => [p.id, p])),
+    [productsArr],
+  );
 
-  const { data: warehouseMap } = useQuery({
+  const { data: warehousesArr } = useQuery({
     queryKey: ["warehouses"],
-    queryFn: async () => {
-      const warehouses = await db.warehouses.toArray();
-      return new Map(warehouses.map(w => [w.id, w]));
-    },
+    queryFn: () => db.warehouses.toArray(),
     staleTime: 1000 * 60,
   });
+  const warehouseMap = useMemo(
+    () => new Map((warehousesArr ?? []).map(w => [w.id, w])),
+    [warehousesArr],
+  );
 
   const { data: recentTxns = [] } = useQuery({
     queryKey: ["recent_txns"],

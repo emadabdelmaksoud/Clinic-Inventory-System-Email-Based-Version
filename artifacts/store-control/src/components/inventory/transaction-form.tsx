@@ -223,7 +223,10 @@ function LineRow({ type, line, lineNumber, totalLines, onUpdate, onRemove }: Lin
     enabled: !!line.product?.id && !!line.warehouseId && type === "inventory_count",
   });
 
-  const batchList = isDispenseType ? (productBatches.data ?? []) : (locationBatches.data ?? []);
+  const batchList = useMemo(
+    () => isDispenseType ? (productBatches.data ?? []) : (locationBatches.data ?? []),
+    [isDispenseType, productBatches.data, locationBatches.data],
+  );
 
   useEffect(() => {
     if (!batchList.length) { onUpdate({ batchId: "" }); return; }
@@ -231,6 +234,7 @@ function LineRow({ type, line, lineNumber, totalLines, onUpdate, onRemove }: Lin
       const first = batchList.find((b) => b.quantityBaseUnit > 0) ?? batchList[0];
       onUpdate({ batchId: first?.id ?? "" });
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [batchList]);
 
   useEffect(() => {
