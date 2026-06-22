@@ -60,7 +60,7 @@ export default function PWAInstallButton() {
             <li><span className="font-medium text-foreground">iPhone/iPad:</span> Share → "Add to Home Screen"</li>
             <li><span className="font-medium text-foreground">Android:</span> menu → "Add to Home Screen"</li>
           </ul>
-          <p className="text-muted-foreground/70 pt-1">Works after deploying to Vercel (HTTPS required).</p>
+          <p className="text-muted-foreground/70 pt-1">Works after publishing the app (HTTPS required).</p>
           <button
             onClick={dismiss}
             className="text-muted-foreground/60 hover:text-muted-foreground underline mt-1"
