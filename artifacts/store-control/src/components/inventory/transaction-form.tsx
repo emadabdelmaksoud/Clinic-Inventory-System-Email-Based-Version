@@ -16,35 +16,8 @@ import { performStockIn, performOutOrCount } from "@/lib/inventory-ops";
 import { classifyExpiry, daysUntil } from "@/lib/fifo";
 import { useAuth } from "@/lib/auth";
 import type { TransactionType } from "@/lib/db";
-import { Plus, Trash2 } from "lucide-react";
 
 type SupportedType = Extract<TransactionType, "stock_in" | "dispensing" | "disposal" | "inventory_count">;
-
-interface LineState {
-  id: string;
-  product: PickedProduct | null;
-  warehouseId: string;
-  sectionId: string;
-  unitId: string;
-  quantity: string;
-  batchNumber: string;
-  expiryDate: string;
-  batchId: string;
-}
-
-function newLine(): LineState {
-  return {
-    id: Math.random().toString(36).slice(2),
-    product: null,
-    warehouseId: "",
-    sectionId: "",
-    unitId: "",
-    quantity: "",
-    batchNumber: "",
-    expiryDate: "",
-    batchId: "",
-  };
-}
 
 interface Props {
   type: SupportedType;
@@ -54,152 +27,37 @@ interface Props {
 export function TransactionForm({ type, onSuccess }: Props) {
   const qc = useQueryClient();
   const { user } = useAuth();
-  const [lines, setLines] = useState<LineState[]>([newLine()]);
+  const [product, setProduct] = useState<PickedProduct | null>(null);
+  const [warehouseId, setWarehouseId] = useState("");
+  const [sectionId, setSectionId] = useState("");
+  const [unitId, setUnitId] = useState("");
+  const [quantity, setQuantity] = useState("");
   const [notes, setNotes] = useState("");
+  const [batchNumber, setBatchNumber] = useState("");
+  const [expiryDate, setExpiryDate] = useState("");
+  const [batchId, setBatchId] = useState("");
 
-  useEffect(() => {
-    setLines([newLine()]);
-    setNotes("");
-  }, [type]);
-
-  function updateLine(id: string, patch: Partial<LineState>) {
-    setLines(prev => prev.map(l => l.id === id ? { ...l, ...patch } : l));
-  }
-
-  function addLine() {
-    setLines(prev => [...prev, newLine()]);
-  }
-
-  function removeLine(id: string) {
-    setLines(prev => prev.length > 1 ? prev.filter(l => l.id !== id) : prev);
-  }
-
-  const submit = useMutation({
-    mutationFn: async () => {
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        const label = `Line ${i + 1}`;
-        if (!line.product) throw new Error(`${label}: Select a product`);
-        if (!line.unitId) throw new Error(`${label}: Select a unit`);
-        const qty = Number(line.quantity);
-        if (!(qty > 0)) throw new Error(`${label}: Quantity must be > 0`);
-        if (type === "stock_in" && !line.warehouseId) throw new Error(`${label}: Select a warehouse`);
-        if (type !== "stock_in" && !line.batchId) throw new Error(`${label}: Select a batch`);
-      }
-
-      const results = [];
-      for (const line of lines) {
-        const qty = Number(line.quantity);
-        if (type === "stock_in") {
-          results.push(await performStockIn({
-            productId: line.product!.id,
-            warehouseId: line.warehouseId,
-            sectionId: line.sectionId || null,
-            batchNumber: line.batchNumber.trim() || null,
-            expiryDate: line.expiryDate || null,
-            unitId: line.unitId,
-            quantity: qty,
-            notes: notes.trim() || null,
-            performedBy: user?.id ?? null,
-          }));
-        } else {
-          results.push(await performOutOrCount({
-            type,
-            productId: line.product!.id,
-            batchId: line.batchId,
-            warehouseId: line.warehouseId,
-            sectionId: line.sectionId || null,
-            unitId: line.unitId,
-            quantity: qty,
-            notes: notes.trim() || null,
-            performedBy: user?.id ?? null,
-          }));
-        }
-      }
-      return results;
-    },
-    onSuccess: () => {
-      const n = lines.length;
-      toast.success(`${labelFor(type)} recorded${n > 1 ? ` (${n} lines)` : ""}`);
-      qc.invalidateQueries({ queryKey: ["inv_batches"] });
-      qc.invalidateQueries({ queryKey: ["product_batches"] });
-      qc.invalidateQueries({ queryKey: ["transactions"] });
-      qc.invalidateQueries({ queryKey: ["kpis"] });
-      qc.invalidateQueries({ queryKey: ["fifo_batches"] });
-      qc.invalidateQueries({ queryKey: ["overview_kpis"] });
-      setLines([newLine()]);
-      setNotes("");
-      onSuccess?.();
-    },
-    onError: (e) => toast.error((e as Error).message),
-  });
-
-  return (
-    <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); submit.mutate(); }}>
-      <div className="space-y-2">
-        {lines.map((line, idx) => (
-          <LineRow
-            key={line.id}
-            type={type}
-            line={line}
-            lineNumber={idx + 1}
-            totalLines={lines.length}
-            onUpdate={(patch) => updateLine(line.id, patch)}
-            onRemove={() => removeLine(line.id)}
-          />
-        ))}
-      </div>
-
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="w-full border-dashed text-muted-foreground hover:text-foreground gap-1.5"
-        onClick={addLine}
-      >
-        <Plus className="w-3.5 h-3.5" /> Add another line
-      </Button>
-
-      <div className="space-y-1.5 pt-1">
-        <Label>Notes <span className="text-muted-foreground text-xs">(applies to all lines)</span></Label>
-        <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional notes" />
-      </div>
-
-      <div className="flex items-center justify-between pt-1">
-        <span className="text-xs text-muted-foreground">{lines.length} line{lines.length !== 1 ? "s" : ""}</span>
-        <Button type="submit" disabled={submit.isPending}>
-          {submit.isPending ? "Saving…" : `Record ${labelFor(type)}`}
-        </Button>
-      </div>
-    </form>
-  );
-}
-
-interface LineRowProps {
-  type: SupportedType;
-  line: LineState;
-  lineNumber: number;
-  totalLines: number;
-  onUpdate: (patch: Partial<LineState>) => void;
-  onRemove: () => void;
-}
-
-function LineRow({ type, line, lineNumber, totalLines, onUpdate, onRemove }: LineRowProps) {
   const isDispenseType = type === "dispensing" || type === "disposal";
 
+  useEffect(() => {
+    setProduct(null); setWarehouseId(""); setSectionId("");
+    setUnitId(""); setQuantity(""); setNotes("");
+    setBatchNumber(""); setExpiryDate(""); setBatchId("");
+  }, [type]);
+
   const units = useQuery({
-    queryKey: ["product_units", line.product?.id],
-    queryFn: () => listProductUnits(line.product!.id),
-    enabled: !!line.product?.id,
+    queryKey: ["product_units", product?.id],
+    queryFn: () => listProductUnits(product!.id),
+    enabled: !!product?.id,
   });
 
   useEffect(() => {
     const list = units.data ?? [];
-    if (list.length && !list.find((u) => u.id === line.unitId)) {
+    if (list.length && !list.find((u) => u.id === unitId)) {
       const base = list.find((u) => u.isBase) ?? list[0];
-      onUpdate({ unitId: base?.id ?? "" });
+      setUnitId(base?.id ?? "");
     }
-  }, [units.data]);
+  }, [units.data, unitId]);
 
   const warehousesQuery = useQuery({
     queryKey: ["warehouses"],
@@ -212,135 +70,179 @@ function LineRow({ type, line, lineNumber, totalLines, onUpdate, onRemove }: Lin
   }, [warehousesQuery.data]);
 
   const productBatches = useQuery({
-    queryKey: ["product_batches", line.product?.id],
-    queryFn: () => listProductBatches(line.product!.id),
-    enabled: !!line.product?.id && isDispenseType,
+    queryKey: ["product_batches", product?.id],
+    queryFn: () => listProductBatches(product!.id),
+    enabled: !!product?.id && isDispenseType,
   });
 
   const locationBatches = useQuery({
-    queryKey: ["inv_batches", line.product?.id, line.warehouseId, line.sectionId || null],
-    queryFn: () => listLocationBatches(line.product!.id, line.warehouseId, line.sectionId || null),
-    enabled: !!line.product?.id && !!line.warehouseId && type === "inventory_count",
+    queryKey: ["inv_batches", product?.id, warehouseId, sectionId || null],
+    queryFn: () => listLocationBatches(product!.id, warehouseId, sectionId || null),
+    enabled: !!product?.id && !!warehouseId && type === "inventory_count",
   });
 
-  const batchList = useMemo(
-    () => isDispenseType ? (productBatches.data ?? []) : (locationBatches.data ?? []),
-    [isDispenseType, productBatches.data, locationBatches.data],
-  );
+  const batchList = isDispenseType
+    ? (productBatches.data ?? [])
+    : (locationBatches.data ?? []);
 
   useEffect(() => {
-    if (!batchList.length) { onUpdate({ batchId: "" }); return; }
-    if (!batchList.find((b) => b.id === line.batchId)) {
+    if (!batchList.length) { setBatchId(""); return; }
+    if (!batchList.find((b) => b.id === batchId)) {
       const first = batchList.find((b) => b.quantityBaseUnit > 0) ?? batchList[0];
-      onUpdate({ batchId: first?.id ?? "" });
+      setBatchId(first?.id ?? "");
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [batchList]);
+  }, [batchList, batchId]);
 
   useEffect(() => {
-    if (!isDispenseType || !line.batchId) return;
-    const batch = (productBatches.data ?? []).find((b) => b.id === line.batchId);
-    if (batch) onUpdate({ warehouseId: batch.warehouseId, sectionId: batch.sectionId ?? "" });
-  }, [line.batchId, productBatches.data]);
+    if (!isDispenseType || !batchId) return;
+    const batch = (productBatches.data ?? []).find((b) => b.id === batchId);
+    if (batch) {
+      setWarehouseId(batch.warehouseId);
+      setSectionId(batch.sectionId ?? "");
+    }
+  }, [batchId, productBatches.data, isDispenseType]);
 
-  const selectedUnit = useMemo(() => (units.data ?? []).find((u) => u.id === line.unitId) ?? null, [units.data, line.unitId]);
-  const selectedBatch = useMemo(() => batchList.find((b) => b.id === line.batchId) ?? null, [batchList, line.batchId]);
+  const selectedUnit = useMemo(() => (units.data ?? []).find((u) => u.id === unitId) ?? null, [units.data, unitId]);
+  const selectedBatch = useMemo(() => batchList.find((b) => b.id === batchId) ?? null, [batchList, batchId]);
 
-  const qtyNum = Number(line.quantity);
+  const qtyNum = Number(quantity);
   const qtyBase = selectedUnit && qtyNum > 0 ? toBase(qtyNum, selectedUnit) : 0;
   const stockBase = selectedBatch ? selectedBatch.quantityBaseUnit : 0;
   const stockInUnit = selectedBatch && selectedUnit ? fromBase(stockBase, selectedUnit) : 0;
   const overStock = (type === "dispensing" || type === "disposal") && !!selectedBatch && qtyBase > stockBase;
+
   const expiryStatus = selectedBatch ? classifyExpiry(selectedBatch.expiryDate) : "no-expiry";
   const isExpired = expiryStatus === "expired";
   const isNearExpiry = expiryStatus === "near";
+  const blockForExpiry = type === "dispensing" && isExpired;
+
+  const submit = useMutation({
+    mutationFn: async () => {
+      if (!product) throw new Error("Select a product");
+      if (!unitId) throw new Error("Select a unit");
+      if (!(qtyNum > 0)) throw new Error("Quantity must be > 0");
+
+      if (type === "stock_in") {
+        if (!warehouseId) throw new Error("Select a warehouse");
+        return performStockIn({
+          productId: product.id,
+          warehouseId,
+          sectionId: sectionId || null,
+          batchNumber: batchNumber.trim() || null,
+          expiryDate: expiryDate || null,
+          unitId,
+          quantity: qtyNum,
+          notes: notes.trim() || null,
+          performedBy: user?.id ?? null,
+        });
+      }
+
+      if (!batchId) throw new Error("Select a batch");
+      if (!warehouseId) throw new Error("No warehouse resolved from batch");
+      if (overStock) throw new Error("Quantity exceeds available stock");
+      if (blockForExpiry) throw new Error("Cannot dispense an expired batch — use disposal instead");
+      if (type === "dispensing" && isNearExpiry) {
+        if (!confirm(`This batch expires in ${daysUntil(selectedBatch?.expiryDate ?? null)} days. Continue?`))
+          throw new Error("Cancelled");
+      }
+
+      return performOutOrCount({
+        type,
+        productId: product.id,
+        batchId,
+        warehouseId,
+        sectionId: sectionId || null,
+        unitId,
+        quantity: qtyNum,
+        notes: notes.trim() || null,
+        performedBy: user?.id ?? null,
+      });
+    },
+    onSuccess: () => {
+      toast.success(`${labelFor(type)} recorded`);
+      qc.invalidateQueries({ queryKey: ["inv_batches"] });
+      qc.invalidateQueries({ queryKey: ["product_batches"] });
+      qc.invalidateQueries({ queryKey: ["transactions"] });
+      qc.invalidateQueries({ queryKey: ["kpis"] });
+      qc.invalidateQueries({ queryKey: ["fifo_batches"] });
+      qc.invalidateQueries({ queryKey: ["overview_kpis"] });
+      setQuantity(""); setNotes(""); setBatchNumber(""); setExpiryDate(""); setBatchId("");
+      onSuccess?.();
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
 
   return (
-    <div className="rounded-lg border bg-muted/20 p-3 space-y-3 relative">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-muted-foreground">Line {lineNumber}</span>
-        {totalLines > 1 && (
-          <button
-            type="button"
-            onClick={onRemove}
-            className="text-muted-foreground hover:text-destructive transition-colors p-0.5 rounded"
-            aria-label="Remove line"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
-        )}
-      </div>
-
+    <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); submit.mutate(); }}>
       <div className="space-y-1.5">
-        <Label className="text-xs">Product</Label>
-        <ProductPicker
-          value={line.product}
-          onChange={(p) => onUpdate({ product: p, batchId: "", warehouseId: "", sectionId: "", unitId: "" })}
-        />
+        <Label>Product</Label>
+        <ProductPicker value={product} onChange={(p) => { setProduct(p); setBatchId(""); setWarehouseId(""); setSectionId(""); }} />
       </div>
 
-      {(type === "stock_in" || type === "inventory_count") && (
+      {type === "stock_in" && (
         <LocationPicker
-          warehouseId={line.warehouseId}
-          sectionId={line.sectionId}
-          onChange={({ warehouseId: w, sectionId: s }) => onUpdate({ warehouseId: w, sectionId: s })}
+          warehouseId={warehouseId}
+          sectionId={sectionId}
+          onChange={({ warehouseId: w, sectionId: s }) => { setWarehouseId(w); setSectionId(s); }}
+        />
+      )}
+
+      {type === "inventory_count" && (
+        <LocationPicker
+          warehouseId={warehouseId}
+          sectionId={sectionId}
+          onChange={({ warehouseId: w, sectionId: s }) => { setWarehouseId(w); setSectionId(s); }}
         />
       )}
 
       {type === "stock_in" && (
-        <div className="grid gap-2 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1.5">
-            <Label className="text-xs">Batch # <span className="text-muted-foreground">(optional)</span></Label>
-            <Input
-              className="h-8 text-sm"
-              placeholder="e.g. LOT-2026-001"
-              value={line.batchNumber}
-              onChange={(e) => onUpdate({ batchNumber: e.target.value })}
-            />
+            <Label>Batch number <span className="text-muted-foreground text-xs">(optional)</span></Label>
+            <Input placeholder="e.g. LOT-2026-001" value={batchNumber} onChange={(e) => setBatchNumber(e.target.value)} />
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs">Expiry <span className="text-muted-foreground">(optional)</span></Label>
-            <Input
-              className="h-8 text-sm"
-              type="date"
-              value={line.expiryDate}
-              onChange={(e) => onUpdate({ expiryDate: e.target.value })}
-            />
+            <Label>Expiry date <span className="text-muted-foreground text-xs">(optional)</span></Label>
+            <Input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} />
           </div>
         </div>
       )}
 
       {(isDispenseType || type === "inventory_count") && (
         <div className="space-y-1.5">
-          <Label className="text-xs">Batch</Label>
-          {isDispenseType && !line.product && (
-            <p className="text-xs text-muted-foreground border rounded px-2 py-1.5 bg-background">
-              Select a product to see batches
+          <Label>Batch</Label>
+          {isDispenseType && !product && (
+            <p className="text-sm text-muted-foreground border rounded-md px-3 py-2 bg-muted/30">
+              Select a product to see available batches
             </p>
           )}
-          {isDispenseType && line.product && (productBatches.data ?? []).length === 0 && !productBatches.isLoading && (
-            <p className="text-xs text-amber-600 border rounded px-2 py-1.5 bg-amber-50 dark:bg-amber-950/30">
-              No stock — record a Stock In first
+          {isDispenseType && product && (productBatches.data ?? []).length === 0 && !productBatches.isLoading && (
+            <p className="text-sm text-amber-600 dark:text-amber-400 border rounded-md px-3 py-2 bg-amber-50 dark:bg-amber-950/30">
+              No stock found for this product. Record a Stock In first.
             </p>
           )}
-          {isDispenseType && line.product && (productBatches.data ?? []).length > 0 && (
-            <Select value={line.batchId || undefined} onValueChange={(v) => onUpdate({ batchId: v })}>
-              <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Select batch…" /></SelectTrigger>
+          {isDispenseType && product && (productBatches.data ?? []).length > 0 && (
+            <Select value={batchId || undefined} onValueChange={setBatchId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select batch…" />
+              </SelectTrigger>
               <SelectContent>
                 {(productBatches.data ?? []).map((b) => {
-                  const whName = warehouseMap.get(b.warehouseId) ?? "Unknown";
+                  const whName = warehouseMap.get(b.warehouseId) ?? "Unknown warehouse";
                   const expLabel = b.expiryDate ? `exp ${b.expiryDate}` : "no expiry";
                   const status = classifyExpiry(b.expiryDate);
                   return (
                     <SelectItem key={b.id} value={b.id}>
-                      <span className="flex items-center gap-1.5 text-xs">
+                      <span className="flex items-center gap-2">
                         <span>{b.batchNumber ?? "Auto-batch"}</span>
                         <span className="text-muted-foreground">·</span>
-                        <span className={status === "expired" ? "text-destructive" : status === "near" ? "text-amber-600" : ""}>{expLabel}</span>
+                        <span className={status === "expired" ? "text-destructive" : status === "near" ? "text-amber-600" : ""}>
+                          {expLabel}
+                        </span>
                         <span className="text-muted-foreground">·</span>
                         <span>{whName}</span>
                         <span className="text-muted-foreground">·</span>
-                        <span className="font-mono">{b.quantityBaseUnit} on hand</span>
+                        <span className="font-mono">{b.quantityBaseUnit} in stock</span>
                       </span>
                     </SelectItem>
                   );
@@ -349,14 +251,23 @@ function LineRow({ type, line, lineNumber, totalLines, onUpdate, onRemove }: Lin
             </Select>
           )}
           {type === "inventory_count" && (
-            <Select value={line.batchId || undefined} onValueChange={(v) => onUpdate({ batchId: v })} disabled={!line.product || !line.warehouseId}>
-              <SelectTrigger className="h-8 text-sm">
-                <SelectValue placeholder={!line.product || !line.warehouseId ? "Pick product & warehouse first" : (locationBatches.data ?? []).length ? "Select batch…" : "No batches here"} />
+            <Select value={batchId || undefined} onValueChange={setBatchId} disabled={!product || !warehouseId}>
+              <SelectTrigger>
+                <SelectValue
+                  placeholder={
+                    !product || !warehouseId
+                      ? "Pick product and warehouse first"
+                      : (locationBatches.data ?? []).length
+                      ? "Select batch…"
+                      : "No batches at this location"
+                  }
+                />
               </SelectTrigger>
               <SelectContent>
                 {(locationBatches.data ?? []).map((b) => (
                   <SelectItem key={b.id} value={b.id}>
-                    {b.batchNumber ?? "Auto-batch"} · {b.expiryDate ? `exp ${b.expiryDate}` : "no expiry"} · {b.quantityBaseUnit} on hand
+                    {b.batchNumber ?? "Auto-batch"} ·{" "}
+                    {b.expiryDate ? `exp ${b.expiryDate}` : "no expiry"} · stock {b.quantityBaseUnit}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -365,20 +276,20 @@ function LineRow({ type, line, lineNumber, totalLines, onUpdate, onRemove }: Lin
         </div>
       )}
 
-      {isDispenseType && selectedBatch && line.warehouseId && (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground rounded border bg-background px-2 py-1.5">
+      {isDispenseType && selectedBatch && warehouseId && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground rounded-md border bg-muted/20 px-3 py-2">
           <span className="font-medium text-foreground">Warehouse:</span>
-          <span>{warehouseMap.get(line.warehouseId) ?? line.warehouseId}</span>
-          {line.sectionId && <><span>·</span><span>Section auto-filled</span></>}
-          <Badge variant="outline" className="ml-auto text-xs py-0">Auto</Badge>
+          <span>{warehouseMap.get(warehouseId) ?? warehouseId}</span>
+          {sectionId && <><span>·</span><span>Section auto-filled</span></>}
+          <Badge variant="outline" className="ml-auto text-xs">Auto-resolved</Badge>
         </div>
       )}
 
-      <div className="grid gap-2 grid-cols-3">
-        <div className="space-y-1.5">
-          <Label className="text-xs">Unit</Label>
-          <Select value={line.unitId || undefined} onValueChange={(v) => onUpdate({ unitId: v })} disabled={!line.product}>
-            <SelectTrigger className="h-8 text-sm"><SelectValue placeholder={line.product ? "Unit…" : "Product first"} /></SelectTrigger>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="space-y-1.5 sm:col-span-1">
+          <Label>Unit</Label>
+          <Select value={unitId || undefined} onValueChange={setUnitId} disabled={!product}>
+            <SelectTrigger><SelectValue placeholder={product ? "Select unit…" : "Pick product first"} /></SelectTrigger>
             <SelectContent>
               {(units.data ?? []).map((u) => (
                 <SelectItem key={u.id} value={u.id}>
@@ -388,33 +299,43 @@ function LineRow({ type, line, lineNumber, totalLines, onUpdate, onRemove }: Lin
             </SelectContent>
           </Select>
         </div>
-        <div className="space-y-1.5 col-span-2">
-          <Label className="text-xs">Quantity{type === "inventory_count" ? " (on-hand)" : ""}</Label>
+        <div className="space-y-1.5 sm:col-span-2">
+          <Label>Quantity{type === "inventory_count" ? " (absolute on-hand)" : ""}</Label>
           <Input
-            className="h-8 text-sm"
             type="number" inputMode="decimal" step="any" min="0"
-            value={line.quantity}
-            onChange={(e) => onUpdate({ quantity: e.target.value })}
-            placeholder="0"
+            value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder="0"
           />
           {selectedUnit && qtyNum > 0 && (
             <p className="text-xs text-muted-foreground">= {qtyBase} base unit{qtyBase === 1 ? "" : "s"}</p>
           )}
           {isDispenseType && selectedBatch && (
             <p className={`text-xs ${overStock ? "text-destructive font-medium" : "text-muted-foreground"}`}>
-              Avail: {stockBase} base{selectedUnit ? ` · ${stockInUnit.toFixed(2)} ${selectedUnit.unitName}` : ""}
-              {overStock && " — exceeds stock"}
+              Available: {stockBase} base{selectedUnit ? ` · ${stockInUnit.toFixed(2)} ${selectedUnit.unitName}` : ""}
+              {overStock && " — exceeds available stock"}
             </p>
           )}
           {selectedBatch && isExpired && (
-            <p className="text-xs text-destructive">⚠ Expired {Math.abs(daysUntil(selectedBatch.expiryDate) ?? 0)} days ago</p>
+            <p className="text-xs text-destructive">⚠ Batch expired {Math.abs(daysUntil(selectedBatch.expiryDate) ?? 0)} days ago.</p>
           )}
           {selectedBatch && isNearExpiry && (
-            <p className="text-xs text-amber-600 dark:text-amber-400">Near expiry: {daysUntil(selectedBatch.expiryDate)} days left</p>
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              Near expiry: {daysUntil(selectedBatch.expiryDate)} days remaining.
+            </p>
           )}
         </div>
       </div>
-    </div>
+
+      <div className="space-y-1.5">
+        <Label>Notes</Label>
+        <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional notes" />
+      </div>
+
+      <div className="flex justify-end">
+        <Button type="submit" disabled={submit.isPending || overStock || blockForExpiry}>
+          {submit.isPending ? "Saving…" : `Record ${labelFor(type)}`}
+        </Button>
+      </div>
+    </form>
   );
 }
 
