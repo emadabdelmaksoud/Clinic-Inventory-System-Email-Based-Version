@@ -5,6 +5,7 @@ import { Toaster } from "sonner";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import AppLayout from "@/components/AppLayout";
 import AutoBackupRunner from "@/components/AutoBackupRunner";
+import PWAUpdateBanner from "@/components/PWAUpdateBanner";
 import LoginPage from "@/pages/Login";
 import DashboardPage from "@/pages/Dashboard";
 import ProductsPage from "@/pages/Products";
@@ -88,6 +89,7 @@ export default function App() {
           <AppRouter />
         </WouterRouter>
         <AutoBackupRunner />
+        <PWAUpdateBanner />
         <Toaster richColors position="top-right" />
       </AuthProvider>
     </QueryClientProvider>

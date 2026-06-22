@@ -22,6 +22,7 @@ type SupportedType = Extract<TransactionType, "stock_in" | "dispensing" | "dispo
 interface Props {
   type: SupportedType;
   onSuccess?: () => void;
+  keepOpenOnAnother?: boolean;
 }
 
 export function TransactionForm({ type, onSuccess }: Props) {
@@ -36,6 +37,7 @@ export function TransactionForm({ type, onSuccess }: Props) {
   const [batchNumber, setBatchNumber] = useState("");
   const [expiryDate, setExpiryDate] = useState("");
   const [batchId, setBatchId] = useState("");
+  const [addingAnother, setAddingAnother] = useState(false);
 
   const isDispenseType = type === "dispensing" || type === "disposal";
 
@@ -116,6 +118,16 @@ export function TransactionForm({ type, onSuccess }: Props) {
   const isNearExpiry = expiryStatus === "near";
   const blockForExpiry = type === "dispensing" && isExpired;
 
+  const resetFields = () => {
+    setQuantity(""); setNotes(""); setBatchNumber(""); setExpiryDate(""); setBatchId("");
+  };
+
+  const resetAll = () => {
+    setProduct(null); setWarehouseId(""); setSectionId("");
+    setUnitId(""); setQuantity(""); setNotes("");
+    setBatchNumber(""); setExpiryDate(""); setBatchId("");
+  };
+
   const submit = useMutation({
     mutationFn: async () => {
       if (!product) throw new Error("Select a product");
@@ -166,8 +178,13 @@ export function TransactionForm({ type, onSuccess }: Props) {
       qc.invalidateQueries({ queryKey: ["kpis"] });
       qc.invalidateQueries({ queryKey: ["fifo_batches"] });
       qc.invalidateQueries({ queryKey: ["overview_kpis"] });
-      setQuantity(""); setNotes(""); setBatchNumber(""); setExpiryDate(""); setBatchId("");
-      onSuccess?.();
+      if (addingAnother) {
+        resetFields();
+        setAddingAnother(false);
+      } else {
+        resetAll();
+        onSuccess?.();
+      }
     },
     onError: (e) => toast.error((e as Error).message),
   });
@@ -330,9 +347,17 @@ export function TransactionForm({ type, onSuccess }: Props) {
         <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional notes" />
       </div>
 
-      <div className="flex justify-end">
+      <div className="flex items-center justify-end gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          disabled={submit.isPending || overStock || blockForExpiry}
+          onClick={() => { setAddingAnother(true); submit.mutate(); }}
+        >
+          {submit.isPending && addingAnother ? "Saving…" : `Record & Add New`}
+        </Button>
         <Button type="submit" disabled={submit.isPending || overStock || blockForExpiry}>
-          {submit.isPending ? "Saving…" : `Record ${labelFor(type)}`}
+          {submit.isPending && !addingAnother ? "Saving…" : `Record ${labelFor(type)}`}
         </Button>
       </div>
     </form>

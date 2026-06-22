@@ -196,16 +196,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <span>Dashboard</span>
         </Link>
 
-        {/* Collapsible groups */}
+        {/* Collapsible groups — all except administration */}
         <div className="space-y-0.5">
-          {GROUPS.map(group => {
+          {GROUPS.filter(g => g.id !== "administration").map(group => {
             const isOpen = openGroups.has(group.id);
             const GroupIcon = group.icon;
             const groupHasActive = group.items.some(i => isActive(i.path));
 
             return (
               <div key={group.id}>
-                {/* Group header */}
                 <button
                   onClick={() => toggleGroup(group.id)}
                   className={cn(
@@ -225,7 +224,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                   />
                 </button>
 
-                {/* Group items */}
                 {isOpen && (
                   <div className="ml-3 pl-3 border-l border-sidebar-border/50 mt-0.5 mb-0.5 space-y-0.5">
                     {group.items.map(item => {
@@ -262,7 +260,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           })}
         </div>
 
-        {/* Settings — standalone at bottom of nav */}
+        {/* Settings — above Administration with separator */}
         <div className="mt-2 pt-2 border-t border-sidebar-border/40">
           <Link
             href="/settings"
@@ -279,6 +277,68 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <span>Settings</span>
           </Link>
         </div>
+
+        {/* Administration group — below Settings, separated */}
+        {GROUPS.filter(g => g.id === "administration").map(group => {
+          const isOpen = openGroups.has(group.id);
+          const GroupIcon = group.icon;
+          const groupHasActive = group.items.some(i => isActive(i.path));
+
+          return (
+            <div key={group.id} className="mt-1 pt-1 border-t border-sidebar-border/40">
+              <button
+                onClick={() => toggleGroup(group.id)}
+                className={cn(
+                  "w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors cursor-pointer",
+                  groupHasActive
+                    ? "text-sidebar-foreground"
+                    : "text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                )}
+              >
+                <GroupIcon className={cn("w-4 h-4 flex-shrink-0", groupHasActive && "text-primary")} />
+                <span className="flex-1 text-left">{group.label}</span>
+                <ChevronDown
+                  className={cn(
+                    "w-3.5 h-3.5 flex-shrink-0 transition-transform duration-200",
+                    isOpen ? "rotate-0" : "-rotate-90"
+                  )}
+                />
+              </button>
+
+              {isOpen && (
+                <div className="ml-3 pl-3 border-l border-sidebar-border/50 mt-0.5 mb-0.5 space-y-0.5">
+                  {group.items.map(item => {
+                    const Icon = item.icon;
+                    const active = isActive(item.path);
+                    const badge = formatBadge(item.badge ?? 0);
+                    return (
+                      <Link
+                        key={item.path}
+                        href={item.path}
+                        onClick={() => setSidebarOpen(false)}
+                        data-testid={`nav-${item.label.toLowerCase().replace(/[\s/]+/g, "-")}`}
+                        className={cn(
+                          "flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-sm transition-colors cursor-pointer",
+                          active
+                            ? "bg-primary text-white font-medium"
+                            : "text-sidebar-foreground/65 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                        )}
+                      >
+                        <Icon className="w-3.5 h-3.5 flex-shrink-0" />
+                        <span className="flex-1 truncate">{item.label}</span>
+                        {badge && !active && (
+                          <span className="ml-auto flex-shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-destructive text-white text-[10px] font-bold flex items-center justify-center leading-none">
+                            {badge}
+                          </span>
+                        )}
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </nav>
 
       <PWAInstallButton />

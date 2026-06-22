@@ -114,7 +114,7 @@ export default function WarehousesPage() {
 
   const canEdit = can(user?.role, "inventory", "edit");
   const canDelete = can(user?.role, "inventory", "delete");
-  const canCreate = can(user?.role, "inventory", "create");
+  const canCreate = can(user?.role, "inventory", "edit");
 
   return (
     <div className="space-y-4 max-w-5xl">
