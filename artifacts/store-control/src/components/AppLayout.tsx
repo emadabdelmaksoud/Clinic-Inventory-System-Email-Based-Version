@@ -179,7 +179,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 px-2 py-3 overflow-y-auto">
+      <nav className="flex-1 px-2 py-3 overflow-y-auto [scrollbar-width:thin] [scrollbar-color:hsl(var(--sidebar-border)/0.4)_transparent]">
         {/* Dashboard — standalone */}
         <Link
           href="/dashboard"
