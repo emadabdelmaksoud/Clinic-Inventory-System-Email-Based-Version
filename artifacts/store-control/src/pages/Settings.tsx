@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { db } from "@/lib/db";
 import { exportBackup, migrateLocalToSupabase } from "@/lib/backup";
 import { isSupabaseConfigured } from "@/lib/supabase";
@@ -15,9 +15,13 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Settings, Moon, Sun, Download, Smartphone, CheckCircle2,
-  Cloud, HardDrive, Clock, Trash2, Loader2,
+  Cloud, HardDrive, Clock, Trash2, Loader2, Plus, X, List,
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  getCustomCategories, saveCustomCategories,
+  getCustomUnits, saveCustomUnits,
+} from "@/lib/custom-lists";
 
 async function getSetting(key: string): Promise<string | null> {
   const row = await db.settings.get(key);
@@ -39,6 +43,95 @@ function formatLastRun(iso: string | null): string {
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.floor(hrs / 24);
   return `${days}d ago`;
+}
+
+function ListsManagement() {
+  const qc = useQueryClient();
+  const [newCategory, setNewCategory] = useState("");
+  const [newUnit, setNewUnit] = useState("");
+
+  const { data: customCategories = [] } = useQuery({ queryKey: ["customCategories"], queryFn: getCustomCategories });
+  const { data: customUnits = [] } = useQuery({ queryKey: ["customUnits"], queryFn: getCustomUnits });
+
+  const { mutate: saveCategories } = useMutation({
+    mutationFn: saveCustomCategories,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["customCategories"] }),
+  });
+  const { mutate: saveUnits } = useMutation({
+    mutationFn: saveCustomUnits,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["customUnits"] }),
+  });
+
+  function addCategory() {
+    const v = newCategory.trim();
+    if (!v) return;
+    if (customCategories.includes(v)) { toast.error("Category already exists"); return; }
+    saveCategories([...customCategories, v]);
+    setNewCategory("");
+  }
+  function removeCategory(c: string) { saveCategories(customCategories.filter(x => x !== c)); }
+
+  function addUnit() {
+    const v = newUnit.trim();
+    if (!v) return;
+    if (customUnits.includes(v)) { toast.error("Unit already exists"); return; }
+    saveUnits([...customUnits, v]);
+    setNewUnit("");
+  }
+  function removeUnit(u: string) { saveUnits(customUnits.filter(x => x !== u)); }
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm flex items-center gap-2"><List className="w-4 h-4" /> Lists Management</CardTitle>
+        <CardDescription className="text-xs">Add or remove custom entries that appear in the product form. Built-in entries cannot be removed.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        {/* Categories */}
+        <div className="space-y-2">
+          <p className="text-sm font-medium">Custom Categories</p>
+          {customCategories.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No custom categories yet.</p>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {customCategories.map(c => (
+                <span key={c} className="inline-flex items-center gap-1 text-xs bg-muted rounded px-2 py-0.5">
+                  {c}
+                  <button type="button" onClick={() => removeCategory(c)} className="text-muted-foreground/60 hover:text-destructive transition-colors"><X className="w-3 h-3" /></button>
+                </span>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-2">
+            <Input value={newCategory} onChange={e => setNewCategory(e.target.value)} placeholder="New category…" className="h-8 text-sm"
+              onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addCategory(); } }} />
+            <Button size="sm" variant="outline" className="h-8 px-3 gap-1" onClick={addCategory} type="button"><Plus className="w-3.5 h-3.5" /> Add</Button>
+          </div>
+        </div>
+        {/* Units */}
+        <div className="space-y-2">
+          <p className="text-sm font-medium">Custom Base Units</p>
+          {customUnits.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No custom units yet.</p>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {customUnits.map(u => (
+                <span key={u} className="inline-flex items-center gap-1 text-xs bg-muted rounded px-2 py-0.5">
+                  {u}
+                  <button type="button" onClick={() => removeUnit(u)} className="text-muted-foreground/60 hover:text-destructive transition-colors"><X className="w-3 h-3" /></button>
+                </span>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-2">
+            <Input value={newUnit} onChange={e => setNewUnit(e.target.value)} placeholder="New unit…" className="h-8 text-sm"
+              onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addUnit(); } }} />
+            <Button size="sm" variant="outline" className="h-8 px-3 gap-1" onClick={addUnit} type="button"><Plus className="w-3.5 h-3.5" /> Add</Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 export default function SettingsPage() {
@@ -429,6 +522,9 @@ export default function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Lists Management — admin only */}
+      {user?.role === "admin" && <ListsManagement />}
 
       {/* About */}
       <Card>

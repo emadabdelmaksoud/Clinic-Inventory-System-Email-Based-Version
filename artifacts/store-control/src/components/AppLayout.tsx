@@ -151,15 +151,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }, [activeGroupId]);
 
   const toggleGroup = (id: string) => {
-    setOpenGroups(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
+    setOpenGroups(prev =>
+      prev.has(id) ? new Set<string>() : new Set<string>([id])
+    );
   };
 
   const isDashboardActive = location === "/" || location === "/dashboard";
@@ -262,7 +256,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
       </nav>
 
-      {/* Settings — above the separator line, below nav groups */}
+      <div className="border-t border-sidebar-border/40 mx-2 mt-1" />
+
+      {/* Settings — between the two separator lines */}
       <div className="px-2 pt-1">
         <Link
           href="/settings"

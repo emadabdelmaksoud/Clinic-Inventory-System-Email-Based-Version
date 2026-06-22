@@ -16,14 +16,19 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Search, Trash2, Edit, Eye, Package } from "lucide-react";
+import { Plus, Search, Trash2, Edit, Eye, Package, X } from "lucide-react";
 import { toast } from "sonner";
 import { ComboboxInput } from "@/components/ui/combobox-input";
-import { PHARMA_UNITS, PHARMA_CATEGORIES } from "@/lib/pharma-constants";
+import { getAllCategories, getAllUnits } from "@/lib/custom-lists";
 
 function ProductForm({ onClose, product }: { onClose: () => void; product?: ProductInput & { id?: string } }) {
   const qc = useQueryClient();
   const { user } = useAuth();
+  const [pendingProducts, setPendingProducts] = useState<(ProductInput & { _id: string })[]>([]);
+
+  const { data: allCategories = [] } = useQuery({ queryKey: ["all_categories"], queryFn: getAllCategories });
+  const { data: allUnits = [] } = useQuery({ queryKey: ["all_units"], queryFn: getAllUnits });
+
   const form = useForm<ProductInput>({
     resolver: zodResolver(productSchema),
     defaultValues: product ?? { productName: "", baseUnit: "unit", reorderLevel: 0, productCode: "", barcode: "", category: "", manufacturer: "", notes: "" },
@@ -31,11 +36,16 @@ function ProductForm({ onClose, product }: { onClose: () => void; product?: Prod
 
   const { mutate, isPending } = useMutation({
     mutationFn: async (data: ProductInput) => {
+      for (const p of pendingProducts) {
+        const { _id, ...pd } = p;
+        await createProduct(pd, user?.id);
+      }
       if (product?.id) await updateProduct(product.id, data, user?.id);
       else await createProduct(data, user?.id);
     },
     onSuccess: async () => {
-      toast.success(product?.id ? "Product updated" : "Product created");
+      const total = pendingProducts.length + 1;
+      toast.success(product?.id ? "Product updated" : total > 1 ? `${total} products created` : "Product created");
       await qc.invalidateQueries({ queryKey: ["products"] });
       await qc.invalidateQueries({ queryKey: ["categories"] });
       onClose();
@@ -43,89 +53,112 @@ function ProductForm({ onClose, product }: { onClose: () => void; product?: Prod
     onError: (e) => toast.error((e as Error).message),
   });
 
+  const handleAddLine = async () => {
+    const valid = await form.trigger();
+    if (!valid) return;
+    const data = form.getValues();
+    setPendingProducts(prev => [...prev, { ...data, _id: crypto.randomUUID() }]);
+    form.reset({ productName: "", baseUnit: data.baseUnit, reorderLevel: 0, productCode: "", barcode: "", category: data.category, manufacturer: "", notes: "" });
+  };
+
   return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit((d) => mutate(d))} className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
-          <FormField control={form.control} name="productName" render={({ field }) => (
-            <FormItem className="col-span-2">
-              <FormLabel>Product Name *</FormLabel>
-              <FormControl><Input {...field} value={field.value ?? ""} /></FormControl>
-              <FormMessage />
-            </FormItem>
-          )} />
-          <FormField control={form.control} name="productCode" render={({ field }) => (
-            <FormItem>
-              <FormLabel>Product Code</FormLabel>
-              <FormControl><Input {...field} value={field.value ?? ""} placeholder="Auto-generated" /></FormControl>
-              <FormMessage />
-            </FormItem>
-          )} />
-          <FormField control={form.control} name="barcode" render={({ field }) => (
-            <FormItem>
-              <FormLabel>Barcode</FormLabel>
-              <FormControl><Input {...field} value={field.value ?? ""} /></FormControl>
-              <FormMessage />
-            </FormItem>
-          )} />
-          <FormField control={form.control} name="category" render={({ field }) => (
-            <FormItem>
-              <FormLabel>Category</FormLabel>
-              <FormControl>
-                <ComboboxInput
-                  value={field.value ?? ""}
-                  onChange={field.onChange}
-                  options={PHARMA_CATEGORIES}
-                  placeholder="Type or select a category…"
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )} />
-          <FormField control={form.control} name="manufacturer" render={({ field }) => (
-            <FormItem>
-              <FormLabel>Manufacturer</FormLabel>
-              <FormControl><Input {...field} value={field.value ?? ""} /></FormControl>
-              <FormMessage />
-            </FormItem>
-          )} />
-          <FormField control={form.control} name="baseUnit" render={({ field }) => (
-            <FormItem>
-              <FormLabel>Base Unit *</FormLabel>
-              <FormControl>
-                <ComboboxInput
-                  value={field.value ?? ""}
-                  onChange={field.onChange}
-                  options={PHARMA_UNITS}
-                  placeholder="Type or select a unit…"
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )} />
-          <FormField control={form.control} name="reorderLevel" render={({ field }) => (
-            <FormItem>
-              <FormLabel>Reorder Level</FormLabel>
-              <FormControl><Input {...field} value={field.value ?? 0} type="number" min={0} /></FormControl>
-              <FormMessage />
-            </FormItem>
-          )} />
-          <FormField control={form.control} name="notes" render={({ field }) => (
-            <FormItem className="col-span-2">
-              <FormLabel>Notes</FormLabel>
-              <FormControl><Textarea {...field} value={field.value ?? ""} rows={2} /></FormControl>
-              <FormMessage />
-            </FormItem>
-          )} />
+    <div className="space-y-3">
+      {pendingProducts.length > 0 && (
+        <div className="rounded-md border divide-y bg-muted/20 text-sm">
+          {pendingProducts.map((p, i) => (
+            <div key={p._id} className="flex items-center gap-2 px-3 py-1.5">
+              <span className="text-muted-foreground text-xs w-5 flex-shrink-0">{i + 1}.</span>
+              <span className="font-medium flex-1 truncate">{p.productName}</span>
+              {p.category && <span className="text-muted-foreground text-xs flex-shrink-0">{p.category}</span>}
+              <span className="text-muted-foreground text-xs flex-shrink-0">{p.baseUnit}</span>
+              <button type="button" onClick={() => setPendingProducts(prev => prev.filter(x => x._id !== p._id))}
+                className="flex-shrink-0 text-muted-foreground/60 hover:text-destructive transition-colors">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ))}
         </div>
-        <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-          <Button type="submit" disabled={isPending}>
-            {isPending ? "Saving..." : product?.id ? "Update" : "Create"}
-          </Button>
-        </div>
-      </form>
-    </Form>
+      )}
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit((d) => mutate(d))} className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <FormField control={form.control} name="productName" render={({ field }) => (
+              <FormItem className="col-span-2">
+                <FormLabel>Product Name *</FormLabel>
+                <FormControl><Input {...field} value={field.value ?? ""} /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+            <FormField control={form.control} name="productCode" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Product Code</FormLabel>
+                <FormControl><Input {...field} value={field.value ?? ""} placeholder="Auto-generated" /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+            <FormField control={form.control} name="barcode" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Barcode</FormLabel>
+                <FormControl><Input {...field} value={field.value ?? ""} /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+            <FormField control={form.control} name="category" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Category</FormLabel>
+                <FormControl>
+                  <ComboboxInput value={field.value ?? ""} onChange={field.onChange} options={allCategories} placeholder="Type or select a category…" />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+            <FormField control={form.control} name="manufacturer" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Manufacturer</FormLabel>
+                <FormControl><Input {...field} value={field.value ?? ""} /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+            <FormField control={form.control} name="baseUnit" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Base Unit *</FormLabel>
+                <FormControl>
+                  <ComboboxInput value={field.value ?? ""} onChange={field.onChange} options={allUnits} placeholder="Type or select a unit…" />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+            <FormField control={form.control} name="reorderLevel" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Reorder Level</FormLabel>
+                <FormControl><Input {...field} value={field.value ?? 0} type="number" min={0} /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+            <FormField control={form.control} name="notes" render={({ field }) => (
+              <FormItem className="col-span-2">
+                <FormLabel>Notes</FormLabel>
+                <FormControl><Textarea {...field} value={field.value ?? ""} rows={2} /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+          </div>
+          <div className="flex items-center justify-between gap-2 pt-2">
+            {!product?.id && (
+              <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={handleAddLine} disabled={isPending}>
+                <Plus className="w-3.5 h-3.5" /> Add Line
+              </Button>
+            )}
+            <div className="flex gap-2 ml-auto">
+              <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+              <Button type="submit" disabled={isPending}>
+                {isPending ? "Saving..." : product?.id ? "Update" : pendingProducts.length > 0 ? `Create ${pendingProducts.length + 1}` : "Create"}
+              </Button>
+            </div>
+          </div>
+        </form>
+      </Form>
+    </div>
   );
 }
 
