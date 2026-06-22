@@ -1,4 +1,6 @@
 import Dexie, { type Table } from "dexie";
+import { isSupabaseConfigured, getSupabaseClient } from "./supabase";
+import { SupabaseTableAdapter } from "./db-supabase-adapter";
 
 export interface User {
   id: string;
@@ -129,14 +131,39 @@ export class StoreControlDB extends Dexie {
       warehouses: "id, warehouseCode, warehouseName, isActive",
       warehouseSections: "id, warehouseId, sectionName",
       inventoryBatches: "id, productId, warehouseId, sectionId, expiryDate",
-      inventoryTransactions: "id, transactionType, productId, batchId, warehouseId, createdAt",
+      inventoryTransactions:
+        "id, transactionType, productId, batchId, warehouseId, createdAt",
       auditLogs: "id, tableName, userId, createdAt",
       settings: "key",
     });
   }
 }
 
-export const db = new StoreControlDB();
+function makeSupabaseDB() {
+  const client = getSupabaseClient();
+  return {
+    users: new SupabaseTableAdapter<User>(client, "users"),
+    products: new SupabaseTableAdapter<Product>(client, "products"),
+    productUnits: new SupabaseTableAdapter<ProductUnit>(client, "product_units"),
+    warehouses: new SupabaseTableAdapter<Warehouse>(client, "warehouses"),
+    warehouseSections: new SupabaseTableAdapter<WarehouseSection>(
+      client,
+      "warehouse_sections"
+    ),
+    inventoryBatches: new SupabaseTableAdapter<InventoryBatch>(
+      client,
+      "inventory_batches"
+    ),
+    inventoryTransactions: new SupabaseTableAdapter<InventoryTransaction>(
+      client,
+      "inventory_transactions"
+    ),
+    auditLogs: new SupabaseTableAdapter<AuditLog>(client, "audit_logs"),
+    settings: new SupabaseTableAdapter<AppSetting>(client, "settings", "key"),
+  };
+}
+
+export const db = isSupabaseConfigured ? makeSupabaseDB() : new StoreControlDB();
 
 export function generateId(): string {
   return crypto.randomUUID();

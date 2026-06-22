@@ -4,7 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Package, AlertCircle } from "lucide-react";
+import { AlertCircle } from "lucide-react";
+
+const EVER_LOGGED_IN_KEY = "clinic_inventory_ever_logged_in";
 
 export default function LoginPage() {
   const { signIn } = useAuth();
@@ -12,13 +14,18 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const showAdminHint = !localStorage.getItem(EVER_LOGGED_IN_KEY);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     setLoading(true);
     const { error: err } = await signIn(username, password);
-    if (err) setError(err);
+    if (!err) {
+      localStorage.setItem(EVER_LOGGED_IN_KEY, "1");
+    } else {
+      setError(err);
+    }
     setLoading(false);
   }
 
@@ -26,17 +33,19 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
       <div className="w-full max-w-sm">
         <div className="flex flex-col items-center mb-8">
-          <div className="w-12 h-12 bg-primary rounded-xl flex items-center justify-center mb-3 shadow-md">
-            <Package className="w-6 h-6 text-white" />
+          <div className="w-14 h-14 rounded-xl mb-3 shadow-md overflow-hidden">
+            <img src="/icon.png" alt="Clinic Inventory" className="w-full h-full object-cover" />
           </div>
-          <h1 className="text-2xl font-bold text-foreground">Store Control</h1>
-          <p className="text-sm text-muted-foreground mt-1">Offline Inventory Management</p>
+          <h1 className="text-2xl font-bold text-foreground">Clinic Inventory</h1>
+          <p className="text-sm text-muted-foreground mt-1">AUC Clinic Inventory System</p>
         </div>
 
         <Card>
           <CardHeader className="pb-4">
             <CardTitle className="text-lg">Sign in</CardTitle>
-            <CardDescription>Default admin: <span className="font-mono text-xs">admin / admin123</span></CardDescription>
+            {showAdminHint && (
+              <CardDescription>Default admin: <span className="font-mono text-xs">admin / admin123</span></CardDescription>
+            )}
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">

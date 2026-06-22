@@ -73,4 +73,8 @@ export const PHARMA_CATEGORIES: string[] = [
   "Thyroid",
   "Vitamins & Minerals",
   "Wound Care / Antiseptic",
+  "Supplies",
+  "Equipment",
+  "Flu Med",
+  "Others",
 ];

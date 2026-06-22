@@ -1,4 +1,0 @@
-- [Store Control query key fix](store-control-query-keys.md) — product/warehouse queries use stable keys, search is client-side via useMemo.
-- [Wouter Link fix](wouter-link-fix.md) — wouter v3 Link renders its own <a>; pass className/onClick directly to Link, never nest an <a> inside.
-- [ProductUnit import source](product-unit-type.md) — import type ProductUnit from "./db", not "./product-units" (not re-exported there).
-- [Dexie orderBy indexed fields](dexie-orderby-indexed-fields.md) — orderBy() silently throws on non-indexed fields; always sort non-indexed fields in JS after .toArray().
