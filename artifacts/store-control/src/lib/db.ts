@@ -7,6 +7,7 @@ export interface User {
   username: string;
   fullName: string;
   passwordHash: string;
+  email?: string;
   role: "administrator" | "admin" | "staff";
   createdAt: string;
   updatedAt: string;
@@ -126,6 +127,9 @@ export class StoreControlDB extends Dexie {
     super("StoreControlDB");
     this.version(1).stores({
       users: "id, username, role",
+    });
+    this.version(2).stores({
+      users: "id, username, email, role",
       products: "id, productCode, productName, barcode, category, manufacturer",
       productUnits: "id, productId, unitName, barcode",
       warehouses: "id, warehouseCode, warehouseName, isActive",
