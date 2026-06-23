@@ -165,15 +165,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       let email = emailOrUsername.trim();
 
       if (!email.includes("@")) {
-        // Username → look up email from users table
-        const profile = (await db.users
-          .where("username")
-          .equals(email.toLowerCase())
-          .first()) as User | undefined;
-        if (!profile?.email) {
-          return { error: "Username not found or has no email on record" };
+        // Username → look up email via SECURITY DEFINER RPC (bypasses RLS so
+        // the lookup works before the user is authenticated)
+        const { data: foundEmail, error: rpcErr } = await supabase.rpc(
+          "get_user_email_by_username",
+          { p_username: email.toLowerCase() },
+        );
+        if (rpcErr || !foundEmail) {
+          return { error: "Username not found" };
         }
-        email = profile.email;
+        email = foundEmail as string;
       }
 
       const { error } = await supabase.auth.signInWithPassword({ email, password });
