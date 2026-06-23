@@ -202,12 +202,15 @@ export class SupabaseTableAdapter<T> {
   }
 
   async delete(id: string): Promise<void> {
-    const { error } = await this._client
+    const { error, count } = await this._client
       .from(this._tableName)
-      .delete()
+      .delete({ count: "exact" })
       .eq(this._pkField, id);
     if (error) {
       throw new Error(`Supabase delete error on ${this._tableName}: ${error.message}`);
+    }
+    if (count === 0) {
+      throw new Error(`Delete blocked: insufficient permissions or record not found in ${this._tableName}.`);
     }
   }
 
