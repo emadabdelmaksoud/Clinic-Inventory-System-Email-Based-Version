@@ -231,26 +231,32 @@ function ChangePasswordCard({ userId }: { userId: string }) {
         <CardTitle className="text-sm flex items-center gap-2">
           <KeyRound className="w-4 h-4" /> Change My Password
         </CardTitle>
-        <CardDescription>Update your login password. You must enter your current password to confirm.</CardDescription>
+        <CardDescription>
+          {isSupabaseConfigured
+            ? "Set a new password for your account."
+            : "Update your login password. You must enter your current password to confirm."}
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-3">
-          <div className="space-y-1.5">
-            <Label>Current Password</Label>
-            <div className="relative">
-              <Input
-                type={showCurrent ? "text" : "password"}
-                value={current}
-                onChange={(e) => setCurrent(e.target.value)}
-                required
-                className="pr-10"
-                placeholder="Enter current password"
-              />
-              <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setShowCurrent(v => !v)}>
-                {showCurrent ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
+          {!isSupabaseConfigured && (
+            <div className="space-y-1.5">
+              <Label>Current Password</Label>
+              <div className="relative">
+                <Input
+                  type={showCurrent ? "text" : "password"}
+                  value={current}
+                  onChange={(e) => setCurrent(e.target.value)}
+                  required
+                  className="pr-10"
+                  placeholder="Enter current password"
+                />
+                <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setShowCurrent(v => !v)}>
+                  {showCurrent ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
             </div>
-          </div>
+          )}
           <div className="space-y-1.5">
             <Label>New Password</Label>
             <div className="relative">
