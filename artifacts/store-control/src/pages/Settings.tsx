@@ -18,6 +18,7 @@ import {
   Settings, Moon, Sun, Download, Smartphone, CheckCircle2,
   Cloud, HardDrive, Clock, Trash2, Loader2, Plus, X, List,
   Shield, History, RotateCcw, Save, KeyRound, Eye, EyeOff,
+  UserCircle2, Crown, ShieldCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -611,6 +612,38 @@ export default function SettingsPage() {
         </h1>
         <p className="text-sm text-muted-foreground">Configure your Clinic Inventory app</p>
       </div>
+
+      {/* Profile card — all roles */}
+      {user && (
+        <Card>
+          <CardContent className="pt-5 pb-5">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                <UserCircle2 className="w-7 h-7 text-primary" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-base truncate">{user.fullName || user.username}</p>
+                <p className="text-sm text-muted-foreground font-mono truncate">@{user.username}</p>
+              </div>
+              <div className="flex-shrink-0">
+                {user.role === "administrator" ? (
+                  <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-purple-100 text-purple-800 border border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-800">
+                    <Crown className="w-3 h-3" /> Administrator
+                  </span>
+                ) : user.role === "admin" ? (
+                  <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-primary/10 text-primary border border-primary/20">
+                    <ShieldCheck className="w-3 h-3" /> Admin
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-muted text-muted-foreground border">
+                    Staff
+                  </span>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* General — admin and above only */}
       {isAdminOrAbove && (
