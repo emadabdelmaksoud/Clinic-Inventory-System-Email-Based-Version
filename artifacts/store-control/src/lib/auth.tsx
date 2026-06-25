@@ -1,12 +1,19 @@
 // @refresh reset
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { db, type User, generateId, now } from "./db";
 import { isSupabaseConfigured, supabase } from "./supabase";
 import type { AppRole } from "./permissions";
 
-// ---------------------------------------------------------------------------
+// ─────────────────────────────────────────────────────────────────────────────
 // Offline helpers — only used when Supabase is NOT configured
-// ---------------------------------------------------------------------------
+// ─────────────────────────────────────────────────────────────────────────────
 
 async function hashPassword(password: string): Promise<string> {
   const encoder = new TextEncoder();
@@ -16,7 +23,10 @@ async function hashPassword(password: string): Promise<string> {
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-export async function verifyPassword(password: string, hash: string): Promise<boolean> {
+export async function verifyPassword(
+  password: string,
+  hash: string,
+): Promise<boolean> {
   const inputHash = await hashPassword(password);
   return inputHash === hash;
 }
@@ -63,26 +73,38 @@ async function ensureDefaultAdmin() {
       updatedAt: now(),
     });
   } else {
-    const existing = await db.users.where("username").equals("admin").first();
+    const existing = await db.users
+      .where("username")
+      .equals("admin")
+      .first();
     if (existing && existing.role === "admin") {
-      await db.users.update(existing.id, { role: "administrator", updatedAt: now() });
+      await db.users.update(existing.id, {
+        role: "administrator",
+        updatedAt: now(),
+      });
     }
   }
 }
 
-// ---------------------------------------------------------------------------
+// ─────────────────────────────────────────────────────────────────────────────
 // Auth context
-// ---------------------------------------------------------------------------
+// ─────────────────────────────────────────────────────────────────────────────
 
 interface AuthCtx {
   user: Omit<User, "passwordHash"> | null;
   loading: boolean;
   accessToken: string | null;
+  /** True only while processing a password-recovery link. */
   recoveryMode: boolean;
-  signIn: (emailOrUsername: string, password: string) => Promise<{ error: string | null }>;
+  signIn: (
+    emailOrUsername: string,
+    password: string,
+  ) => Promise<{ error: string | null }>;
   signOut: () => void;
   forgotPassword: (email: string) => Promise<{ error: string | null }>;
-  confirmPasswordReset: (newPassword: string) => Promise<{ error: string | null }>;
+  confirmPasswordReset: (
+    newPassword: string,
+  ) => Promise<{ error: string | null }>;
 }
 
 const AuthContext = createContext<AuthCtx | undefined>(undefined);
@@ -95,20 +117,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [recoveryMode, setRecoveryMode] = useState(false);
 
+  // Ref mirrors recoveryMode so the onAuthStateChange closure always reads
+  // the current value without stale-closure issues.
+  const recoveryRef = useRef(false);
+  function setRecovery(v: boolean) {
+    recoveryRef.current = v;
+    setRecoveryMode(v);
+  }
+
   useEffect(() => {
     if (isSupabaseConfigured && supabase) {
       const {
         data: { subscription },
       } = supabase.auth.onAuthStateChange(async (event, session) => {
+        // ── Password-recovery link clicked ─────────────────────────────────
         if (event === "PASSWORD_RECOVERY") {
-          setRecoveryMode(true);
+          setRecovery(true);
           setUser(null);
           setAccessToken(null);
           setLoading(false);
           return;
         }
 
+        // ── User signed in ─────────────────────────────────────────────────
         if (session?.user) {
+          // If this SIGNED_IN fires right after updateUser() in the recovery
+          // flow, skip it — confirmPasswordReset will call signOut() next.
+          if (recoveryRef.current) {
+            setLoading(false);
+            return;
+          }
           try {
             const profile = await db.users.get(session.user.id);
             if (profile) {
@@ -116,26 +154,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               setUser(safeUser);
               setAccessToken(session.access_token);
             } else {
-              // Auth user exists but no app profile — sign out gracefully
+              // Auth user exists but has no app profile — sign out gracefully
               setUser(null);
               setAccessToken(null);
-              supabase.auth.signOut();
+              await supabase.auth.signOut();
             }
           } catch {
             setUser(null);
             setAccessToken(null);
           }
-        } else {
-          setUser(null);
-          setAccessToken(null);
-          setRecoveryMode(false);
+          setLoading(false);
+          return;
         }
+
+        // ── Signed out ─────────────────────────────────────────────────────
+        setUser(null);
+        setAccessToken(null);
+        setRecovery(false);
         setLoading(false);
       });
 
       return () => subscription.unsubscribe();
     } else {
-      // Offline / Dexie mode
+      // ── Offline / Dexie mode ──────────────────────────────────────────────
       async function init() {
         await deduplicateUsernames();
         await ensureDefaultAdmin();
@@ -160,24 +201,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // ── signIn ─────────────────────────────────────────────────────────────────
+
   const signIn = async (emailOrUsername: string, password: string) => {
     if (isSupabaseConfigured && supabase) {
       let email = emailOrUsername.trim();
 
       if (!email.includes("@")) {
-        // Username → look up email via SECURITY DEFINER RPC (bypasses RLS so
-        // the lookup works before the user is authenticated)
+        // Username → look up email via SECURITY DEFINER RPC.
+        // The RPC bypasses RLS so the lookup works pre-authentication.
         const { data: foundEmail, error: rpcErr } = await supabase.rpc(
           "get_user_email_by_username",
           { p_username: email.toLowerCase() },
         );
         if (rpcErr || !foundEmail) {
-          return { error: "Username not found" };
+          return { error: "Username not found." };
         }
         email = foundEmail as string;
       }
 
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
       if (error) return { error: error.message };
       return { error: null };
     } else {
@@ -195,6 +241,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // ── signOut ────────────────────────────────────────────────────────────────
+
   const signOut = () => {
     if (isSupabaseConfigured && supabase) {
       supabase.auth.signOut();
@@ -204,9 +252,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // ── forgotPassword ─────────────────────────────────────────────────────────
+
   const forgotPassword = async (email: string) => {
     if (!isSupabaseConfigured || !supabase) {
-      return { error: "Forgot password requires Supabase to be configured" };
+      return {
+        error: "Forgot password requires Supabase to be configured.",
+      };
     }
     const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
       redirectTo: `${window.location.origin}/`,
@@ -215,15 +267,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: null };
   };
 
+  // ── confirmPasswordReset ───────────────────────────────────────────────────
+  // After updating the password, Supabase automatically issues a SIGNED_IN
+  // event. We guard against that in onAuthStateChange using recoveryRef, then
+  // call signOut() to ensure the user must log in manually with their new
+  // password (as required).
+
   const confirmPasswordReset = async (newPassword: string) => {
     if (!isSupabaseConfigured || !supabase) {
-      return { error: "Password reset requires Supabase" };
+      return { error: "Password reset requires Supabase." };
     }
-    if (newPassword.length < 6) return { error: "Password must be at least 6 characters" };
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (newPassword.length < 6) {
+      return { error: "Password must be at least 6 characters." };
+    }
+    const { error } = await supabase.auth.updateUser({
+      password: newPassword,
+    });
     if (error) return { error: error.message };
+
+    // Clear recovery state first so the guard in onAuthStateChange is lifted
+    // only after we sign out (the sign-out fires SIGNED_OUT which finishes
+    // the cleanup).
     await supabase.auth.signOut();
-    setRecoveryMode(false);
+    setRecovery(false);
+
     return { error: null };
   };
 
@@ -251,9 +318,9 @@ export function useAuth() {
   return ctx;
 }
 
-// ---------------------------------------------------------------------------
+// ─────────────────────────────────────────────────────────────────────────────
 // User management
-// ---------------------------------------------------------------------------
+// ─────────────────────────────────────────────────────────────────────────────
 
 export async function createUser(
   input: {
@@ -261,10 +328,17 @@ export async function createUser(
     fullName: string;
     email?: string;
     password?: string;
-    role: "administrator" | "admin" | "staff";
+    role: AppRole;
   },
   accessToken?: string,
-) {
+): Promise<{
+  id: string;
+  email: string;
+  username: string;
+  fullName: string;
+  role: string;
+  inviteUrl: string | null;
+}> {
   if (isSupabaseConfigured && accessToken) {
     const res = await fetch("/api/auth/invite-user", {
       method: "POST",
@@ -281,7 +355,9 @@ export async function createUser(
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      throw new Error((data as { error?: string }).error || "Failed to invite user");
+      throw new Error(
+        (data as { error?: string }).error || "Failed to invite user",
+      );
     }
     return res.json();
   } else {
@@ -302,7 +378,37 @@ export async function createUser(
       updatedAt: now(),
     };
     await db.users.add(user);
-    return user;
+    return { ...user, email: "", inviteUrl: null };
+  }
+}
+
+export async function updateUserRole(
+  userId: string,
+  role: AppRole,
+  accessToken?: string,
+): Promise<void> {
+  if (isSupabaseConfigured && accessToken) {
+    const res = await fetch(`/api/auth/users/${userId}/role`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ role }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(
+        (data as { error?: string }).error || "Failed to update role",
+      );
+    }
+  } else {
+    const target = await db.users.get(userId);
+    if (!target) throw new Error("User not found");
+    if (target.role === "administrator") {
+      throw new Error("Administrator role cannot be changed.");
+    }
+    await db.users.update(userId, { role, updatedAt: now() });
   }
 }
 
@@ -313,11 +419,15 @@ export async function updateUserPassword(
 ) {
   if (isSupabaseConfigured) return; // Supabase manages passwords
   if (actorRole !== undefined && actorRole !== "administrator") {
-    throw new Error("Access denied: Only administrators can reset other users' passwords.");
+    throw new Error(
+      "Access denied: Only administrators can reset other users' passwords.",
+    );
   }
   const target = await db.users.get(userId);
   if (target?.role === "administrator") {
-    throw new Error("Administrator credentials can only be changed by the Administrator themselves.");
+    throw new Error(
+      "Administrator credentials can only be changed by the Administrator themselves.",
+    );
   }
   const hash = await hashPassword(newPassword);
   await db.users.update(userId, { passwordHash: hash, updatedAt: now() });
@@ -336,7 +446,8 @@ export async function changeOwnPassword(
     if (!target) throw new Error("User not found.");
     const valid = await verifyPassword(currentPassword, target.passwordHash);
     if (!valid) throw new Error("Current password is incorrect.");
-    if (newPassword.length < 6) throw new Error("New password must be at least 6 characters.");
+    if (newPassword.length < 6)
+      throw new Error("New password must be at least 6 characters.");
     const hash = await hashPassword(newPassword);
     await db.users.update(userId, { passwordHash: hash, updatedAt: now() });
   }
@@ -355,7 +466,9 @@ export async function deleteUser(id: string, accessToken?: string) {
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      throw new Error((data as { error?: string }).error || "Failed to delete user");
+      throw new Error(
+        (data as { error?: string }).error || "Failed to delete user",
+      );
     }
   } else {
     const target = await db.users.get(id);

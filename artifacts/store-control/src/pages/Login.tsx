@@ -4,7 +4,13 @@ import { isSupabaseConfigured } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { AlertCircle, CheckCircle2, ArrowLeft, KeyRound } from "lucide-react";
 
 const EVER_LOGGED_IN_KEY = "clinic_inventory_ever_logged_in";
@@ -12,9 +18,12 @@ const EVER_LOGGED_IN_KEY = "clinic_inventory_ever_logged_in";
 type View = "login" | "forgot" | "reset_password";
 
 export default function LoginPage() {
-  const { signIn, forgotPassword, confirmPasswordReset, recoveryMode } = useAuth();
+  const { signIn, forgotPassword, confirmPasswordReset, recoveryMode } =
+    useAuth();
 
-  const [view, setView] = useState<View>(recoveryMode ? "reset_password" : "login");
+  const [view, setView] = useState<View>(
+    recoveryMode ? "reset_password" : "login",
+  );
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -28,6 +37,7 @@ export default function LoginPage() {
   // Reset password state (PASSWORD_RECOVERY flow)
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [resetSuccess, setResetSuccess] = useState(false);
 
   // If recoveryMode changes after mount, switch view
   if (recoveryMode && view !== "reset_password") {
@@ -69,7 +79,12 @@ export default function LoginPage() {
     }
     setLoading(true);
     const { error: err } = await confirmPasswordReset(newPassword);
-    if (err) setError(err);
+    if (err) {
+      setError(err);
+    } else {
+      // Show success — do NOT auto-login. User must sign in manually.
+      setResetSuccess(true);
+    }
     setLoading(false);
   }
 
@@ -78,10 +93,18 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         <div className="flex flex-col items-center mb-8">
           <div className="w-14 h-14 rounded-xl mb-3 shadow-md overflow-hidden">
-            <img src="/icon.png" alt="Clinic Inventory" className="w-full h-full object-cover" />
+            <img
+              src="/icon.png"
+              alt="Clinic Inventory"
+              className="w-full h-full object-cover"
+            />
           </div>
-          <h1 className="text-2xl font-bold text-foreground">Clinic Inventory</h1>
-          <p className="text-sm text-muted-foreground mt-1">AUC Clinic Inventory System</p>
+          <h1 className="text-2xl font-bold text-foreground">
+            Clinic Inventory
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            AUC Clinic Inventory System
+          </p>
         </div>
 
         {/* ── Sign In ─────────────────────────────────────────── */}
@@ -108,7 +131,11 @@ export default function LoginPage() {
                     type="text"
                     value={identifier}
                     onChange={(e) => setIdentifier(e.target.value)}
-                    placeholder={isSupabaseConfigured ? "email@example.com or username" : "Enter username"}
+                    placeholder={
+                      isSupabaseConfigured
+                        ? "email@example.com or username"
+                        : "Enter username"
+                    }
                     required
                     autoFocus
                     autoComplete="username"
@@ -121,7 +148,10 @@ export default function LoginPage() {
                       <button
                         type="button"
                         className="text-xs text-primary hover:underline"
-                        onClick={() => { setView("forgot"); setError(""); }}
+                        onClick={() => {
+                          setView("forgot");
+                          setError("");
+                        }}
                       >
                         Forgot password?
                       </button>
@@ -165,7 +195,8 @@ export default function LoginPage() {
                 <KeyRound className="w-5 h-5" /> Forgot Password
               </CardTitle>
               <CardDescription>
-                Enter your email address and we'll send you a password reset link.
+                Enter your email address and we'll send you a password reset
+                link.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -174,14 +205,19 @@ export default function LoginPage() {
                   <div className="flex items-start gap-3 p-3 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-md text-sm text-green-800 dark:text-green-300">
                     <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" />
                     <span>
-                      Reset link sent to <strong>{forgotEmail}</strong>. Check your inbox and
-                      follow the link to set a new password.
+                      Reset link sent to <strong>{forgotEmail}</strong>. Check
+                      your inbox and follow the link to set a new password.
                     </span>
                   </div>
                   <Button
                     variant="outline"
                     className="w-full gap-2"
-                    onClick={() => { setView("login"); setForgotSent(false); setForgotEmail(""); setError(""); }}
+                    onClick={() => {
+                      setView("login");
+                      setForgotSent(false);
+                      setForgotEmail("");
+                      setError("");
+                    }}
                   >
                     <ArrowLeft className="w-4 h-4" /> Back to Sign In
                   </Button>
@@ -206,14 +242,21 @@ export default function LoginPage() {
                       {error}
                     </div>
                   )}
-                  <Button type="submit" className="w-full" disabled={loading}>
+                  <Button
+                    type="submit"
+                    className="w-full"
+                    disabled={loading}
+                  >
                     {loading ? "Sending…" : "Send Reset Link"}
                   </Button>
                   <Button
                     type="button"
                     variant="ghost"
                     className="w-full gap-2"
-                    onClick={() => { setView("login"); setError(""); }}
+                    onClick={() => {
+                      setView("login");
+                      setError("");
+                    }}
                   >
                     <ArrowLeft className="w-4 h-4" /> Back to Sign In
                   </Button>
@@ -230,56 +273,88 @@ export default function LoginPage() {
               <CardTitle className="text-lg flex items-center gap-2">
                 <KeyRound className="w-5 h-5" /> Set New Password
               </CardTitle>
-              <CardDescription>
-                Choose a new password for your account.
-              </CardDescription>
+              {!resetSuccess && (
+                <CardDescription>
+                  Choose a new password for your account.
+                </CardDescription>
+              )}
             </CardHeader>
             <CardContent>
-              <form onSubmit={handleResetPassword} className="space-y-4">
-                <div className="space-y-1.5">
-                  <Label htmlFor="new-password">New Password</Label>
-                  <Input
-                    id="new-password"
-                    type="password"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="At least 6 characters"
-                    required
-                    minLength={6}
-                    autoFocus
-                    autoComplete="new-password"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="confirm-password">Confirm Password</Label>
-                  <Input
-                    id="confirm-password"
-                    type="password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="Repeat new password"
-                    required
-                    minLength={6}
-                    autoComplete="new-password"
-                  />
-                  {confirmPassword && newPassword !== confirmPassword && (
-                    <p className="text-xs text-destructive">Passwords do not match</p>
-                  )}
-                </div>
-                {error && (
-                  <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 rounded-md px-3 py-2">
-                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                    {error}
+              {resetSuccess ? (
+                /* ── Success state: password saved, user must sign in ── */
+                <div className="space-y-4">
+                  <div className="flex items-start gap-3 p-3 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-md text-sm text-green-800 dark:text-green-300">
+                    <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                    <span>
+                      Password updated successfully. Please sign in with your
+                      new password.
+                    </span>
                   </div>
-                )}
-                <Button
-                  type="submit"
-                  className="w-full"
-                  disabled={loading || (!!confirmPassword && newPassword !== confirmPassword)}
-                >
-                  {loading ? "Saving…" : "Set New Password"}
-                </Button>
-              </form>
+                  <Button
+                    className="w-full gap-2"
+                    onClick={() => {
+                      setView("login");
+                      setResetSuccess(false);
+                      setNewPassword("");
+                      setConfirmPassword("");
+                      setError("");
+                    }}
+                  >
+                    <ArrowLeft className="w-4 h-4" /> Go to Sign In
+                  </Button>
+                </div>
+              ) : (
+                <form onSubmit={handleResetPassword} className="space-y-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="new-password">New Password</Label>
+                    <Input
+                      id="new-password"
+                      type="password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="At least 6 characters"
+                      required
+                      minLength={6}
+                      autoFocus
+                      autoComplete="new-password"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="confirm-password">Confirm Password</Label>
+                    <Input
+                      id="confirm-password"
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="Repeat new password"
+                      required
+                      minLength={6}
+                      autoComplete="new-password"
+                    />
+                    {confirmPassword && newPassword !== confirmPassword && (
+                      <p className="text-xs text-destructive">
+                        Passwords do not match
+                      </p>
+                    )}
+                  </div>
+                  {error && (
+                    <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 rounded-md px-3 py-2">
+                      <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                      {error}
+                    </div>
+                  )}
+                  <Button
+                    type="submit"
+                    className="w-full"
+                    disabled={
+                      loading ||
+                      (!!confirmPassword && newPassword !== confirmPassword)
+                    }
+                  >
+                    {loading ? "Saving…" : "Set New Password"}
+                  </Button>
+                </form>
+              )}
             </CardContent>
           </Card>
         )}
@@ -291,7 +366,8 @@ export default function LoginPage() {
         </p>
 
         <p className="text-center text-xs text-muted-foreground mt-3 border-t border-border pt-3">
-          Created by <span className="font-medium text-foreground">Emad Ali</span>
+          Created by{" "}
+          <span className="font-medium text-foreground">Emad Ali</span>
         </p>
       </div>
     </div>

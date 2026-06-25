@@ -1,0 +1,107 @@
+This is a good candidate for a single clear Replit task. Use this prompt:
+
+Analyze the entire Supabase authentication, user management, role management, invitation, password reset, and security implementation.
+
+Current issues:
+
+1. User synchronization issue
+
+* When a user is created in Supabase Authentication, no corresponding record is automatically created in public.users.
+* I had to manually insert the user into public.users.
+* Fix this so Auth users and public.users remain automatically synchronized.
+* Preserve all existing users and data.
+
+2. User invitation issue
+
+* Administrator can log in successfully.
+* Sending an invitation from the application returns "Invalid" and does not correctly create the user.
+* Identify the root cause and fix the complete invitation flow.
+* Verify that invitations create:
+
+  * a Supabase Auth user
+  * a matching public.users record
+  * the correct role assignment
+
+3. User management enhancement
+
+* Administrator should be able to:
+
+  * Create users directly by email and assign a role.
+  * Edit user roles.
+  * Reset user passwords when allowed.
+* Do not rely only on invitations if direct user creation can be implemented safely.
+* Preserve existing application logic and workflows.
+
+4. Role system
+   The application must support exactly:
+
+* administrator
+* admin
+* staff
+
+Requirements:
+
+* administrator cannot be modified, deleted, disabled, or have credentials changed by admin users.
+* admin cannot manage administrator accounts.
+* staff only has operational access.
+* Remove duplicate role definitions and duplicate permission logic.
+* Verify that all frontend, backend, database, and Supabase role definitions are consistent.
+
+5. Supabase role field
+   Currently role is free-text.
+   Implement a controlled role selection using only:
+
+* administrator
+* admin
+* staff
+
+Use the safest database approach (ENUM or equivalent) without breaking existing data.
+Provide required SQL migration scripts.
+
+6. Password reset flow
+   Current behavior:
+
+* User clicks "Forgot Password".
+* Email is sent.
+* User is automatically logged into the application.
+
+Required behavior:
+
+* User receives reset email.
+* User sets a new password outside the application.
+* User is not automatically logged in.
+* User must manually log in using the new password after reset.
+
+7. Security review
+   Perform a complete review of:
+
+* Supabase Authentication
+* RLS policies
+* User creation
+* User updates
+* Role escalation risks
+* Password reset flow
+* Invitation flow
+* Administrator protection
+* Public API exposure
+* Environment variable usage
+* Vercel deployment configuration
+
+Fix any security vulnerabilities found.
+
+Before making changes:
+
+* Report root causes.
+* Report all files that will be modified.
+* Report all SQL changes required.
+
+After implementation provide:
+
+* Files changed
+* SQL scripts
+* Security findings
+* Testing checklist
+* Any manual Supabase configuration steps required
+* Verification that the project is ready for Vercel deployment without changing project structure or existing business functionality.
+
+This prompt is focused on your actual issues and should produce both the code fixes and the Supabase steps you need.
